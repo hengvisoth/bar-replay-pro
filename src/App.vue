@@ -18,6 +18,28 @@ const store = useReplayStore();
           Timeframes
         </div>
         <TimeframeTabs />
+
+        <div class="ml-auto flex items-center gap-3">
+          <span class="text-[11px] uppercase tracking-[0.25em] text-gray-500"
+            >Indicators</span
+          >
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="indicator in store.indicatorDefinitions"
+              :key="indicator.id"
+              type="button"
+              class="px-3 py-1 text-xs font-semibold rounded border transition-colors"
+              :class="[
+                store.isIndicatorActive(indicator.id)
+                  ? 'border-blue-500 bg-blue-500/20 text-blue-100'
+                  : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100'
+              ]"
+              @click="store.toggleIndicator(indicator.id)"
+            >
+              {{ indicator.label }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div class="flex-1 relative">

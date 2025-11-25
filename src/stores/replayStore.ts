@@ -25,6 +25,16 @@ const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
   { id: "sma50", label: "SMA 50", type: "sma", period: 50, color: "#1abc9c" },
 ];
 
+type IndicatorState = Record<string, boolean>;
+
+const defaultIndicatorState: IndicatorState = INDICATOR_DEFINITIONS.reduce(
+  (acc, indicator) => {
+    acc[indicator.id] = true;
+    return acc;
+  },
+  {} as IndicatorState
+);
+
 export const useReplayStore = defineStore("replay", () => {
   // --- STATE ---
   // We now map keys (e.g., "1h", "15m") to data arrays
@@ -37,6 +47,7 @@ export const useReplayStore = defineStore("replay", () => {
   const isPlaying = ref(false);
   const playbackSpeed = ref(100);
   const activeTimeframe = ref<Timeframe>("1h");
+  const activeIndicators = ref<IndicatorState>({ ...defaultIndicatorState });
 
   // The Master Clock (Unix Timestamp)
   const currentReplayTime = ref<number>(0);
@@ -118,13 +129,16 @@ export const useReplayStore = defineStore("replay", () => {
     for (const [key, data] of Object.entries(datasets.value)) {
       // Binary search would be faster here for large datasets,
       // but filter is fine for <10k items
-      const filtered = data.filter((c) => c.time <= currentReplayTime.value);
+      const cutoffIndex = findVisibleEndIndex(data, currentReplayTime.value);
+      const filtered =
+        cutoffIndex >= 0 ? data.slice(0, cutoffIndex + 1) : ([] as Candle[]);
       newVisible[key] = filtered;
 
       newIndicators[key] = computeIndicatorsForVisible(
         filtered,
         visibleDatasets.value[key] || [],
-        visibleIndicators.value[key] || {}
+        visibleIndicators.value[key] || {},
+        activeIndicators.value
       );
     }
 
@@ -163,6 +177,16 @@ export const useReplayStore = defineStore("replay", () => {
     updateView();
   }
 
+  function toggleIndicator(id: string) {
+    if (!(id in activeIndicators.value)) return;
+    activeIndicators.value[id] = !activeIndicators.value[id];
+    updateView();
+  }
+
+  function isIndicatorActive(id: string) {
+    return !!activeIndicators.value[id];
+  }
+
   function togglePlay() {
     isPlaying.value = !isPlaying.value;
     if (isPlaying.value) {
@@ -182,10 +206,16 @@ export const useReplayStore = defineStore("replay", () => {
   // For the slider max value
   const totalCandles = computed(() => activeDataset.value.length || 0);
 
+  const activeIndicatorDefinitions = computed(() =>
+    INDICATOR_DEFINITIONS.filter((def) => activeIndicators.value[def.id])
+  );
+
   return {
     availableTimeframes: AVAILABLE_TIMEFRAMES,
     indicatorDefinitions: INDICATOR_DEFINITIONS,
+    activeIndicatorDefinitions,
     activeTimeframe,
+    activeIndicators,
     datasets,
     visibleDatasets,
     visibleIndicators,
@@ -198,13 +228,16 @@ export const useReplayStore = defineStore("replay", () => {
     togglePlay,
     jumpTo,
     setActiveTimeframe,
+    toggleIndicator,
+    isIndicatorActive,
   };
 });
 
 function computeIndicatorsForVisible(
   visibleCandles: Candle[],
   previousVisible: Candle[],
-  previousIndicators: Record<string, IndicatorPoint[]>
+  previousIndicators: Record<string, IndicatorPoint[]>,
+  activeIndicatorState: IndicatorState
 ): Record<string, IndicatorPoint[]> {
   const result: Record<string, IndicatorPoint[]> = {};
 
@@ -215,6 +248,11 @@ function computeIndicatorsForVisible(
   const isJump = newLength - prevLength > 1;
 
   for (const definition of INDICATOR_DEFINITIONS) {
+    if (!activeIndicatorState[definition.id]) {
+      result[definition.id] = [];
+      continue;
+    }
+
     const period = definition.period ?? 0;
     if (period <= 0 || newLength < period) {
       result[definition.id] = [];
@@ -235,6 +273,24 @@ function computeIndicatorsForVisible(
       }
 
       result[definition.id] = appendSMA(prevSeries, visibleCandles, period);
+    }
+  }
+
+  return result;
+}
+
+function findVisibleEndIndex(data: Candle[], targetTime: number) {
+  let left = 0;
+  let right = data.length - 1;
+  let result = -1;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    if (data[mid].time <= targetTime) {
+      result = mid;
+      left = mid + 1;
+    } else {
+      right = mid - 1;
     }
   }
 
