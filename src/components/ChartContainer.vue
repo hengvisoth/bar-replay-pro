@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from "vue";
-// 1. Import CandlestickSeries here
 import {
   createChart,
   type IChartApi,
@@ -18,24 +17,24 @@ let candleSeries: ISeriesApi<"Candlestick"> | null = null;
 onMounted(async () => {
   if (!chartContainer.value) return;
 
+  // 1. Initialize Chart with AUTO width/height
   chart = createChart(chartContainer.value, {
     layout: {
       background: { color: "#10141f" },
       textColor: "#d1d4dc",
     },
     grid: {
-      vertLines: { color: "#2b2b43" },
-      horzLines: { color: "#2b2b43" },
+      vertLines: { color: "#1f2937" }, // Darker grid for pro look
+      horzLines: { color: "#1f2937" },
     },
     width: chartContainer.value.clientWidth,
-    height: 500,
+    height: chartContainer.value.clientHeight, // Fill container
     timeScale: {
       timeVisible: true,
       secondsVisible: false,
     },
   });
 
-  // 2. THIS IS THE FIX FOR VERSION 5+
   candleSeries = chart.addSeries(CandlestickSeries, {
     upColor: "#26a69a",
     downColor: "#ef5350",
@@ -58,7 +57,6 @@ watch(
   () => store.visibleCandles,
   (newCandles) => {
     if (!candleSeries) return;
-
     const currentLength = newCandles.length;
     if (currentLength > 0) {
       const latestCandle = newCandles[currentLength - 1];
@@ -70,39 +68,42 @@ watch(
 
 onUnmounted(() => {
   window.removeEventListener("resize", handleResize);
-  if (chart) {
-    chart.remove();
-  }
+  if (chart) chart.remove();
 });
 
+// 2. Resize Logic: Always fill the window
 function handleResize() {
   if (chart && chartContainer.value) {
-    chart.applyOptions({ width: chartContainer.value.clientWidth });
+    chart.applyOptions({
+      width: chartContainer.value.clientWidth,
+      height: chartContainer.value.clientHeight,
+    });
   }
 }
 </script>
 
 <template>
-  <div class="p-4 bg-gray-900 min-h-screen text-white">
-    <h1 class="text-xl font-bold mb-4">Bar Replay POC</h1>
+  <div class="relative w-screen h-screen bg-[#10141f] overflow-hidden">
+    <div ref="chartContainer" class="w-full h-full"></div>
 
-    <div class="relative border border-gray-700 rounded-lg overflow-hidden">
-      <div ref="chartContainer" class="w-full h-[500px]"></div>
+    <div
+      class="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 bg-gray-800/90 border border-gray-700 p-2 rounded-lg shadow-xl backdrop-blur-md"
+    >
+      <button
+        @click="store.togglePlay"
+        class="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold transition-colors"
+      >
+        <span v-if="!store.isPlaying">▶ Play</span>
+        <span v-else>⏸ Pause</span>
+      </button>
 
       <div
-        class="absolute top-4 left-4 z-10 flex items-center gap-4 bg-gray-800/80 p-2 rounded backdrop-blur"
+        class="flex flex-col text-xs text-gray-400 px-2 border-l border-gray-600"
       >
-        <button
-          @click="store.togglePlay"
-          class="px-4 py-2 bg-blue-600 rounded hover:bg-blue-500 font-bold transition"
-        >
-          {{ store.isPlaying ? "PAUSE" : "PLAY" }}
-        </button>
-
-        <div class="text-sm">
-          Candles: {{ store.visibleCandles.length }} /
-          {{ store.allCandles.length }}
-        </div>
+        <span>CANDLES</span>
+        <span class="text-white font-mono text-base">
+          {{ store.visibleCandles.length }} / {{ store.allCandles.length }}
+        </span>
       </div>
     </div>
   </div>
