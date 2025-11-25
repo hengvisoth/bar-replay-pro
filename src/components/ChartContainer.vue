@@ -9,8 +9,10 @@ import {
   type MouseEventParams,
   type SeriesDataItemTypeMap,
   type LogicalRange,
+  createSeriesMarkers,
 } from "lightweight-charts";
 import { useReplayStore } from "../stores/replayStore";
+import { useTradingStore } from "../stores/tradingStore";
 import ChartLegend from "./ChartLegend.vue";
 import type { Candle } from "../data/types";
 
@@ -21,6 +23,7 @@ const props = defineProps<{
 
 const chartContainer = ref<HTMLElement | null>(null);
 const store = useReplayStore();
+const tradingStore = useTradingStore();
 
 // Local state for the Legend
 const hoveredCandle = ref<Candle | null>(null);
@@ -33,6 +36,7 @@ let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<"Candlestick"> | null = null;
 let indicatorSeries: Record<string, ISeriesApi<"Line">> = {};
 let unsubscribeRangeWatcher: (() => void) | null = null;
+let tradeMarkersPrimitive: ReturnType<typeof createSeriesMarkers> | null = null;
 
 onMounted(async () => {
   if (!chartContainer.value) return;
@@ -53,6 +57,7 @@ onMounted(async () => {
     wickUpColor: "#26a69a",
     wickDownColor: "#ef5350",
   });
+  tradeMarkersPrimitive = createSeriesMarkers(candleSeries, []);
 
   indicatorSeries = {};
   for (const indicator of store.indicatorDefinitions) {
@@ -88,6 +93,7 @@ onMounted(async () => {
 
   initChartData();
   initIndicatorData();
+  updateTradeMarkers();
   const timeScale = chart.timeScale();
   const handleRangeChange = (range: LogicalRange | null) => {
     if (!range) return;
@@ -210,6 +216,15 @@ watch(
       }
     }
     updateIndicatorLegendValues();
+    updateTradeMarkers();
+  },
+  { deep: true }
+);
+
+watch(
+  () => tradingStore.tradeMarkers,
+  () => {
+    updateTradeMarkers();
   },
   { deep: true }
 );
@@ -220,6 +235,7 @@ onUnmounted(() => {
     unsubscribeRangeWatcher();
     unsubscribeRangeWatcher = null;
   }
+  tradeMarkersPrimitive = null;
   if (chart) chart.remove();
 });
 
@@ -252,6 +268,18 @@ function updateIndicatorLegendValues(targetTime?: number) {
   });
 
   legendIndicators.value = nextLegendValues;
+}
+
+function updateTradeMarkers() {
+  if (!tradeMarkersPrimitive) return;
+  const markers = tradingStore.tradeMarkers.map((marker) => ({
+    time: marker.time,
+    position: marker.position,
+    shape: marker.shape,
+    color: marker.color,
+    text: marker.text,
+  }));
+  tradeMarkersPrimitive.setMarkers(markers);
 }
 </script>
 

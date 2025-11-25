@@ -36,6 +36,16 @@ function formatNumber(value: number) {
   return value.toFixed(2);
 }
 
+function formatSigned(value: number) {
+  const formatted = formatNumber(Math.abs(value));
+  return value >= 0 ? `+${formatted}` : `-${formatted}`;
+}
+
+function pnlColor(value: number) {
+  if (value === 0) return "#d1d5db";
+  return value > 0 ? "#26a69a" : "#ef5350";
+}
+
 function handleBuy() {
   if (!canTrade.value || !currentPrice.value || !currentTime.value) return;
   tradingStore.marketBuy(
@@ -81,14 +91,14 @@ function formatTimestamp(ts?: number) {
       </div>
       <div class="flex justify-between text-xs text-gray-400">
         <span>Realized PnL</span>
-        <span :class="tradingStore.realizedPnL >= 0 ? 'text-green-400' : 'text-red-400'">
-          {{ formatNumber(tradingStore.realizedPnL) }}
+        <span :style="{ color: pnlColor(tradingStore.realizedPnL) }">
+          {{ formatSigned(tradingStore.realizedPnL) }}
         </span>
       </div>
       <div class="flex justify-between text-xs text-gray-400">
         <span>Unrealized PnL</span>
-        <span :class="unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400'">
-          {{ formatNumber(unrealizedPnL) }}
+        <span :style="{ color: pnlColor(unrealizedPnL) }">
+          {{ formatSigned(unrealizedPnL) }}
         </span>
       </div>
       <div class="pt-2 flex items-center gap-2">
@@ -143,8 +153,8 @@ function formatTimestamp(ts?: number) {
             </div>
             <div class="flex justify-between">
               <span>Unrealized</span>
-              <span :class="position.unrealized >= 0 ? 'text-green-400' : 'text-red-400'">
-                {{ formatNumber(position.unrealized) }}
+              <span :style="{ color: pnlColor(position.unrealized) }">
+                {{ formatSigned(position.unrealized) }}
               </span>
             </div>
             <div class="text-[10px] text-gray-500 mt-1">
@@ -177,8 +187,8 @@ function formatTimestamp(ts?: number) {
             </div>
             <div class="flex justify-between">
               <span>PnL</span>
-              <span :class="trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                {{ formatNumber(trade.pnl) }}
+              <span :style="{ color: pnlColor(trade.pnl) }">
+                {{ formatSigned(trade.pnl) }}
               </span>
             </div>
             <div class="text-[10px] text-gray-500 mt-1">

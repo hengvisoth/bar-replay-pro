@@ -1,17 +1,30 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
+import type { UTCTimestamp } from "lightweight-charts";
+
+type PositionSide = "long" | "short";
 
 interface Position {
   id: number;
   size: number;
   entryPrice: number;
-  entryTime: number;
+  entryTime: UTCTimestamp;
+  side: PositionSide;
 }
 
 interface ClosedTrade extends Position {
   exitPrice: number;
-  exitTime: number;
+  exitTime: UTCTimestamp;
   pnl: number;
+}
+
+interface TradeMarker {
+  id: string;
+  time: UTCTimestamp;
+  position: "aboveBar" | "belowBar";
+  shape: "arrowUp" | "arrowDown";
+  color: string;
+  text: string;
 }
 
 const STARTING_BALANCE = 10_000;
@@ -40,7 +53,8 @@ export const useTradingStore = defineStore("trading", () => {
       id: nextPositionId++,
       size,
       entryPrice: price,
-      entryTime: time,
+      entryTime: time as UTCTimestamp,
+      side: "long",
     });
     cashBalance.value -= cost;
     return true;
@@ -63,7 +77,8 @@ export const useTradingStore = defineStore("trading", () => {
       }
 
       const closeAmount = Math.min(position.size, remainingToClose);
-      const pnl = (price - position.entryPrice) * closeAmount;
+      const direction = position.side === "long" ? 1 : -1;
+      const pnl = (price - position.entryPrice) * closeAmount * direction;
       realizedPnL.value += pnl;
       cashBalance.value += closeAmount * price;
 
@@ -73,7 +88,8 @@ export const useTradingStore = defineStore("trading", () => {
         entryPrice: position.entryPrice,
         entryTime: position.entryTime,
         exitPrice: price,
-        exitTime: time,
+        exitTime: time as UTCTimestamp,
+        side: position.side,
         pnl,
       });
 
@@ -95,19 +111,49 @@ export const useTradingStore = defineStore("trading", () => {
 
   function getUnrealizedPnL(markPrice?: number | null) {
     if (!markPrice) return 0;
-    return openPositions.value.reduce(
-      (sum, pos) => sum + (markPrice - pos.entryPrice) * pos.size,
-      0
-    );
+    return openPositions.value.reduce((sum, pos) => {
+      const direction = pos.side === "long" ? 1 : -1;
+      return sum + (markPrice - pos.entryPrice) * pos.size * direction;
+    }, 0);
   }
 
   function getEquity(markPrice?: number | null) {
-    const markValue = openPositions.value.reduce((sum, pos) => {
-      const price = markPrice || pos.entryPrice;
-      return sum + pos.size * price;
+    const mark = markPrice ?? null;
+    const positionValue = openPositions.value.reduce((sum, pos) => {
+      const price = mark ?? pos.entryPrice;
+      const direction = pos.side === "long" ? 1 : -1;
+      return sum + pos.size * price * direction;
     }, 0);
-    return cashBalance.value + markValue;
+    return cashBalance.value + positionValue;
   }
+
+  const tradeMarkers = computed<TradeMarker[]>(() => {
+    const markers: TradeMarker[] = [];
+
+    for (const position of openPositions.value) {
+      markers.push({
+        id: `open-${position.id}`,
+        time: position.entryTime,
+        position: position.side === "long" ? "belowBar" : "aboveBar",
+        shape: position.side === "long" ? "arrowUp" : "arrowDown",
+        color: position.side === "long" ? "#26a69a" : "#ef5350",
+        text: `${position.side === "long" ? "BUY" : "SELL"}`,
+      });
+    }
+
+    for (const trade of tradeHistory.value) {
+      markers.push({
+        id: `close-${trade.id}-${trade.exitTime}`,
+        time: trade.exitTime,
+        position: trade.side === "long" ? "aboveBar" : "belowBar",
+        shape: trade.side === "long" ? "arrowDown" : "arrowUp",
+        color: trade.side === "long" ? "#ef5350" : "#26a69a",
+        text: trade.pnl >= 0 ? `+${trade.pnl.toFixed(2)}` : trade.pnl.toFixed(2),
+      });
+    }
+
+    return markers;
+  });
 
   return {
     startingBalance: STARTING_BALANCE,
@@ -121,5 +167,6 @@ export const useTradingStore = defineStore("trading", () => {
     totalOpenSize,
     getUnrealizedPnL,
     getEquity,
+    tradeMarkers,
   };
 });
