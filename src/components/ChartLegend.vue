@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { Candle } from "../data/types";
 
-defineProps<{
+const props = defineProps<{
   candle: Candle | null;
   symbol: string;
   interval: string;
+  indicators?: Array<{ label: string; value: number | null; color: string }>;
 }>();
 
 // Helper to format price
@@ -46,5 +47,23 @@ const getColor = (c: Candle) =>
     </div>
 
     <div v-else class="text-gray-500 italic">Loading data...</div>
+
+    <div
+      v-if="props.indicators && props.indicators.length"
+      class="flex flex-col gap-1 text-[11px] text-gray-300"
+    >
+      <div
+        v-for="indicator in props.indicators"
+        :key="indicator.label"
+        class="flex items-center gap-2"
+      >
+        <span
+          class="font-semibold"
+          :style="{ color: indicator.color }"
+          >{{ indicator.label }}</span
+        >
+        <span class="text-white">{{ fmt(indicator.value ?? 0) }}</span>
+      </div>
+    </div>
   </div>
 </template>

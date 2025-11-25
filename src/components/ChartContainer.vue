@@ -24,6 +24,9 @@ const store = useReplayStore();
 
 // Local state for the Legend
 const hoveredCandle = ref<Candle | null>(null);
+const legendIndicators = ref<
+  Array<{ label: string; value: number | null; color: string }>
+>([]);
 const savedRanges = ref<Record<string, LogicalRange | null>>({});
 
 let chart: IChartApi | null = null;
@@ -100,6 +103,7 @@ function updateLegendToLatest() {
   const data = store.visibleDatasets[props.timeframe];
   const latest = data?.[data.length - 1];
   hoveredCandle.value = latest ?? null;
+  updateIndicatorLegendValues(latest?.time);
 }
 
 function initChartData() {
@@ -120,6 +124,7 @@ function initIndicatorData() {
     if (!series) continue;
     series.setData(indicatorMap[indicator.id] || []);
   }
+  updateIndicatorLegendValues();
 }
 
 function saveCurrentRange(timeframe: string) {
@@ -204,6 +209,7 @@ watch(
         }
       }
     }
+    updateIndicatorLegendValues();
   },
   { deep: true }
 );
@@ -225,6 +231,28 @@ function handleResize() {
     });
   }
 }
+
+function updateIndicatorLegendValues(targetTime?: number) {
+  const indicatorMap = store.visibleIndicators[props.timeframe] || {};
+  const activeIndicators = store.indicatorDefinitions.filter((definition) =>
+    store.isIndicatorActive(definition.id)
+  );
+
+  const nextLegendValues = activeIndicators.map((definition) => {
+    const points = indicatorMap[definition.id] || [];
+    const latestPoint = targetTime
+      ? [...points].reverse().find((point) => point.time <= targetTime)
+      : points[points.length - 1];
+
+    return {
+      label: definition.label,
+      value: latestPoint?.value ?? null,
+      color: definition.color,
+    };
+  });
+
+  legendIndicators.value = nextLegendValues;
+}
 </script>
 
 <template>
@@ -236,6 +264,7 @@ function handleResize() {
       :candle="hoveredCandle"
       symbol="ETHUSDT"
       :interval="timeframe"
+      :indicators="legendIndicators"
     />
 
     <!-- The Chart -->

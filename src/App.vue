@@ -2,6 +2,7 @@
 import ChartContainer from "./components/ChartContainer.vue";
 import ScrubBar from "./components/ScrubBar.vue";
 import TimeframeTabs from "./components/TimeframeTabs.vue";
+import TradingPanel from "./components/TradingPanel.vue";
 import { useReplayStore } from "./stores/replayStore";
 
 const store = useReplayStore();
@@ -42,8 +43,11 @@ const store = useReplayStore();
         </div>
       </div>
 
-      <div class="flex-1 relative">
-        <ChartContainer :timeframe="store.activeTimeframe" />
+      <div class="flex-1 flex overflow-hidden">
+        <div class="flex-1 relative">
+          <ChartContainer :timeframe="store.activeTimeframe" />
+        </div>
+        <TradingPanel />
       </div>
     </div>
 
