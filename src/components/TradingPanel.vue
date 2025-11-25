@@ -64,11 +64,23 @@ function handleSell() {
   );
 }
 
+function handleCloseAll() {
+  if (!currentPrice.value || !currentTime.value) return;
+  tradingStore.closeAllPositions(currentPrice.value, currentTime.value);
+}
+
+function handleClosePosition(positionId: number) {
+  if (!currentPrice.value || !currentTime.value) return;
+  tradingStore.closePosition(positionId, currentPrice.value, currentTime.value);
+}
+
 const enrichedPositions = computed(() => {
   const price = currentPrice.value;
   return tradingStore.openPositions.map((pos) => ({
     ...pos,
-    unrealized: price ? (price - pos.entryPrice) * pos.size : 0,
+    unrealized: price
+      ? (price - pos.entryPrice) * pos.size * (pos.side === "long" ? 1 : -1)
+      : 0,
   }));
 });
 
@@ -113,20 +125,27 @@ function formatTimestamp(ts?: number) {
       </div>
       <div class="grid grid-cols-2 gap-2 pt-2">
         <button
-          class="py-2 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-semibold"
-          :disabled="!currentPrice"
+          class="py-2 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-semibold disabled:opacity-40"
+          :disabled="!canTrade"
           @click="handleBuy"
         >
           Buy @ {{ currentPrice ? formatNumber(currentPrice) : '--' }}
         </button>
         <button
-          class="py-2 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-semibold"
-          :disabled="tradingStore.totalOpenSize <= 0 || !currentPrice"
+          class="py-2 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-semibold disabled:opacity-40"
+          :disabled="!canTrade"
           @click="handleSell"
         >
-          Sell
+          Sell / Short
         </button>
       </div>
+      <button
+        class="w-full mt-2 py-2 rounded border border-gray-600 text-sm font-semibold text-gray-200 hover:border-blue-500 disabled:opacity-40"
+        :disabled="!canTrade || tradingStore.openPositions.length === 0"
+        @click="handleCloseAll"
+      >
+        Close All Positions
+      </button>
     </div>
 
     <div class="p-4 border-b border-gray-800 flex-1 overflow-auto space-y-4">
@@ -144,6 +163,10 @@ function formatTimestamp(ts?: number) {
             class="bg-[#10192f] rounded p-2 text-xs text-gray-300"
           >
             <div class="flex justify-between">
+              <span>Side</span>
+              <span class="uppercase">{{ position.side }}</span>
+            </div>
+            <div class="flex justify-between">
               <span>Size</span>
               <span>{{ formatNumber(position.size) }}</span>
             </div>
@@ -160,6 +183,13 @@ function formatTimestamp(ts?: number) {
             <div class="text-[10px] text-gray-500 mt-1">
               {{ formatTimestamp(position.entryTime) }}
             </div>
+            <button
+              class="mt-2 w-full py-1.5 rounded border border-gray-600 text-gray-200 text-[11px] font-semibold hover:border-blue-500 disabled:opacity-40"
+              :disabled="!canTrade"
+              @click="handleClosePosition(position.id)"
+            >
+              Close This Position
+            </button>
           </div>
         </div>
       </div>
@@ -177,6 +207,10 @@ function formatTimestamp(ts?: number) {
             :key="trade.exitTime + '-' + trade.id"
             class="bg-[#10192f] rounded p-2 text-xs text-gray-300"
           >
+            <div class="flex justify-between">
+              <span>Side</span>
+              <span class="uppercase">{{ trade.side }}</span>
+            </div>
             <div class="flex justify-between">
               <span>Size</span>
               <span>{{ formatNumber(trade.size) }}</span>

@@ -44,69 +44,53 @@ export const useTradingStore = defineStore("trading", () => {
 
   function marketBuy(size: number, price: number, time: number) {
     if (size <= 0 || price <= 0) return false;
-    const cost = size * price;
+    const tradeTime = time as UTCTimestamp;
+
+    const { remaining, closed } = closePositions("short", size, price, tradeTime);
+    let executed = closed > 0;
+
+    if (remaining <= 0) {
+      return executed;
+    }
+
+    const cost = remaining * price;
     if (cashBalance.value + 1e-8 < cost) {
-      return false;
+      return executed;
     }
 
     openPositions.value.push({
       id: nextPositionId++,
-      size,
+      size: remaining,
       entryPrice: price,
-      entryTime: time as UTCTimestamp,
+      entryTime: tradeTime,
       side: "long",
     });
     cashBalance.value -= cost;
-    return true;
+    executed = true;
+    return executed;
   }
 
   function marketSell(size: number, price: number, time: number) {
     if (size <= 0 || price <= 0) return false;
-    const remainingOpenSize = totalOpenSize.value;
-    if (remainingOpenSize <= 0) {
-      return false;
+    const tradeTime = time as UTCTimestamp;
+
+    const { remaining, closed } = closePositions("long", size, price, tradeTime);
+    let executed = closed > 0;
+
+    if (remaining <= 0) {
+      return executed;
     }
 
-    let remainingToClose = Math.min(size, remainingOpenSize);
-    const updatedPositions: Position[] = [];
-
-    for (const position of openPositions.value) {
-      if (remainingToClose <= 0) {
-        updatedPositions.push(position);
-        continue;
-      }
-
-      const closeAmount = Math.min(position.size, remainingToClose);
-      const direction = position.side === "long" ? 1 : -1;
-      const pnl = (price - position.entryPrice) * closeAmount * direction;
-      realizedPnL.value += pnl;
-      cashBalance.value += closeAmount * price;
-
-      tradeHistory.value.unshift({
-        id: position.id,
-        size: closeAmount,
-        entryPrice: position.entryPrice,
-        entryTime: position.entryTime,
-        exitPrice: price,
-        exitTime: time as UTCTimestamp,
-        side: position.side,
-        pnl,
-      });
-
-      if (tradeHistory.value.length > 100) {
-        tradeHistory.value.pop();
-      }
-
-      const remainingSize = position.size - closeAmount;
-      if (remainingSize > 1e-8) {
-        updatedPositions.push({ ...position, size: remainingSize });
-      }
-
-      remainingToClose -= closeAmount;
-    }
-
-    openPositions.value = updatedPositions;
-    return true;
+    openPositions.value.push({
+      id: nextPositionId++,
+      size: remaining,
+      entryPrice: price,
+      entryTime: tradeTime,
+      side: "short",
+    });
+    cashBalance.value += remaining * price;
+    executed = true;
+    return executed;
   }
 
   function getUnrealizedPnL(markPrice?: number | null) {
@@ -155,6 +139,103 @@ export const useTradingStore = defineStore("trading", () => {
     return markers;
   });
 
+  function closePositions(
+    targetSide: PositionSide,
+    size: number,
+    price: number,
+    time: UTCTimestamp,
+    options?: { positionId?: number }
+  ) {
+    if (size <= 0) {
+      return { remaining: 0, closed: 0 };
+    }
+
+    let remainingToClose = size;
+    let closed = 0;
+    const updatedPositions: Position[] = [];
+
+    for (const position of openPositions.value) {
+      if (position.side !== targetSide) {
+        updatedPositions.push(position);
+        continue;
+      }
+
+      if (remainingToClose <= 0) {
+        updatedPositions.push(position);
+        continue;
+      }
+
+      if (options?.positionId && position.id !== options.positionId) {
+        updatedPositions.push(position);
+        continue;
+      }
+
+      const closeAmount = Math.min(position.size, remainingToClose);
+      const direction = position.side === "long" ? 1 : -1;
+      const pnl = (price - position.entryPrice) * closeAmount * direction;
+      realizedPnL.value += pnl;
+      closed += closeAmount;
+
+      if (targetSide === "long") {
+        cashBalance.value += closeAmount * price;
+      } else {
+        cashBalance.value -= closeAmount * price;
+      }
+
+      tradeHistory.value.unshift({
+        id: position.id,
+        size: closeAmount,
+        entryPrice: position.entryPrice,
+        entryTime: position.entryTime,
+        exitPrice: price,
+        exitTime: time,
+        side: position.side,
+        pnl,
+      });
+
+      if (tradeHistory.value.length > 100) {
+        tradeHistory.value.pop();
+      }
+
+      const remainingSize = position.size - closeAmount;
+      if (remainingSize > 1e-8) {
+        updatedPositions.push({ ...position, size: remainingSize });
+      }
+
+      remainingToClose -= closeAmount;
+    }
+
+    openPositions.value = updatedPositions;
+    return { remaining: remainingToClose, closed };
+  }
+
+  function closePosition(
+    positionId: number,
+    price?: number | null,
+    time?: number | null
+  ) {
+    if (!price || !time) return false;
+    const position = openPositions.value.find((pos) => pos.id === positionId);
+    if (!position) return false;
+
+    closePositions(
+      position.side,
+      position.size,
+      price,
+      time as UTCTimestamp,
+      { positionId }
+    );
+    return true;
+  }
+
+  function closeAllPositions(price?: number | null, time?: number | null) {
+    if (!price || !time) return false;
+    const tradeTime = time as UTCTimestamp;
+    closePositions("long", Number.MAX_SAFE_INTEGER, price, tradeTime);
+    closePositions("short", Number.MAX_SAFE_INTEGER, price, tradeTime);
+    return true;
+  }
+
   return {
     startingBalance: STARTING_BALANCE,
     cashBalance,
@@ -164,6 +245,8 @@ export const useTradingStore = defineStore("trading", () => {
     realizedPnL,
     marketBuy,
     marketSell,
+    closePosition,
+    closeAllPositions,
     totalOpenSize,
     getUnrealizedPnL,
     getEquity,
