@@ -1,7 +1,13 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { loadCsvData } from "../services/dataLoader";
-import type { Candle, Timeframe } from "../data/types";
+import type {
+  Candle,
+  Timeframe,
+  IndicatorPoint,
+  IndicatorDefinition,
+} from "../data/types";
+import { calculateSMA, appendSMA } from "../utils/indicators";
 
 const AVAILABLE_TIMEFRAMES: Timeframe[] = ["15m", "1h"];
 const TIMEFRAME_STEP_SECONDS: Record<string, number> = {
@@ -14,12 +20,19 @@ const DATA_FILES: Record<string, string> = {
   "15m": "ETHUSDT-15m-2024-08.csv",
   "1h": "ETHUSDT-1h-2024-08.csv",
 };
+const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
+  { id: "sma14", label: "SMA 14", type: "sma", period: 14, color: "#f0b90b" },
+  { id: "sma50", label: "SMA 50", type: "sma", period: 50, color: "#1abc9c" },
+];
 
 export const useReplayStore = defineStore("replay", () => {
   // --- STATE ---
   // We now map keys (e.g., "1h", "15m") to data arrays
   const datasets = ref<Record<string, Candle[]>>({});
   const visibleDatasets = ref<Record<string, Candle[]>>({});
+  const visibleIndicators = ref<
+    Record<string, Record<string, IndicatorPoint[]>>
+  >({});
 
   const isPlaying = ref(false);
   const playbackSpeed = ref(100);
@@ -100,14 +113,23 @@ export const useReplayStore = defineStore("replay", () => {
   function updateView() {
     // Filter ALL datasets based on the Master Clock
     const newVisible: Record<string, Candle[]> = {};
+    const newIndicators: Record<string, Record<string, IndicatorPoint[]>> = {};
 
     for (const [key, data] of Object.entries(datasets.value)) {
       // Binary search would be faster here for large datasets,
       // but filter is fine for <10k items
-      newVisible[key] = data.filter((c) => c.time <= currentReplayTime.value);
+      const filtered = data.filter((c) => c.time <= currentReplayTime.value);
+      newVisible[key] = filtered;
+
+      newIndicators[key] = computeIndicatorsForVisible(
+        filtered,
+        visibleDatasets.value[key] || [],
+        visibleIndicators.value[key] || {}
+      );
     }
 
     visibleDatasets.value = newVisible;
+    visibleIndicators.value = newIndicators;
   }
 
   function jumpTo(index: number) {
@@ -162,9 +184,11 @@ export const useReplayStore = defineStore("replay", () => {
 
   return {
     availableTimeframes: AVAILABLE_TIMEFRAMES,
+    indicatorDefinitions: INDICATOR_DEFINITIONS,
     activeTimeframe,
     datasets,
     visibleDatasets,
+    visibleIndicators,
     isPlaying,
     currentReplayTime,
     currentDate,
@@ -176,3 +200,43 @@ export const useReplayStore = defineStore("replay", () => {
     setActiveTimeframe,
   };
 });
+
+function computeIndicatorsForVisible(
+  visibleCandles: Candle[],
+  previousVisible: Candle[],
+  previousIndicators: Record<string, IndicatorPoint[]>
+): Record<string, IndicatorPoint[]> {
+  const result: Record<string, IndicatorPoint[]> = {};
+
+  const prevLength = previousVisible?.length ?? 0;
+  const newLength = visibleCandles.length;
+  const hasNewCandle = newLength > prevLength;
+  const isReset = newLength < prevLength;
+  const isJump = newLength - prevLength > 1;
+
+  for (const definition of INDICATOR_DEFINITIONS) {
+    const period = definition.period ?? 0;
+    if (period <= 0 || newLength < period) {
+      result[definition.id] = [];
+      continue;
+    }
+
+    const prevSeries = previousIndicators?.[definition.id] || [];
+
+    if (definition.type === "sma") {
+      if (isReset || isJump || prevSeries.length === 0) {
+        result[definition.id] = calculateSMA(visibleCandles, period);
+        continue;
+      }
+
+      if (!hasNewCandle) {
+        result[definition.id] = prevSeries.slice();
+        continue;
+      }
+
+      result[definition.id] = appendSMA(prevSeries, visibleCandles, period);
+    }
+  }
+
+  return result;
+}

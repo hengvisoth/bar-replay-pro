@@ -5,6 +5,7 @@ import {
   type IChartApi,
   type ISeriesApi,
   CandlestickSeries,
+  LineSeries,
   type MouseEventParams,
   type SeriesDataItemTypeMap,
   type LogicalRange,
@@ -27,6 +28,7 @@ const savedRanges = ref<Record<string, LogicalRange | null>>({});
 
 let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<"Candlestick"> | null = null;
+let indicatorSeries: Record<string, ISeriesApi<"Line">> = {};
 let unsubscribeRangeWatcher: (() => void) | null = null;
 
 onMounted(async () => {
@@ -48,6 +50,15 @@ onMounted(async () => {
     wickUpColor: "#26a69a",
     wickDownColor: "#ef5350",
   });
+
+  indicatorSeries = {};
+  for (const indicator of store.indicatorDefinitions) {
+    indicatorSeries[indicator.id] = chart.addSeries(LineSeries, {
+      color: indicator.color,
+      lineWidth: indicator.lineWidth ?? 2,
+      crosshairMarkerVisible: false,
+    });
+  }
 
   // --- LEGEND LOGIC ---
   // Subscribe to crosshair moves to update Legend
@@ -73,6 +84,7 @@ onMounted(async () => {
   }
 
   initChartData();
+  initIndicatorData();
   const timeScale = chart.timeScale();
   const handleRangeChange = (range: LogicalRange | null) => {
     if (!range) return;
@@ -97,6 +109,16 @@ function initChartData() {
     candleSeries.setData(data);
     applySavedRangeOrFit();
     updateLegendToLatest();
+  }
+}
+
+function initIndicatorData() {
+  if (!chart) return;
+  const indicatorMap = store.visibleIndicators[props.timeframe] || {};
+  for (const indicator of store.indicatorDefinitions) {
+    const series = indicatorSeries[indicator.id];
+    if (!series) continue;
+    series.setData(indicatorMap[indicator.id] || []);
   }
 }
 
@@ -150,7 +172,40 @@ watch(
       saveCurrentRange(oldTf);
     }
     initChartData();
+    initIndicatorData();
   }
+);
+
+watch(
+  () => store.visibleIndicators[props.timeframe],
+  (newIndicators, oldIndicators) => {
+    if (!chart) return;
+    for (const indicator of store.indicatorDefinitions) {
+      const series = indicatorSeries[indicator.id];
+      if (!series) continue;
+
+      const nextData = newIndicators?.[indicator.id] || [];
+      const prevData = oldIndicators?.[indicator.id] || [];
+
+      if (nextData.length === 0) {
+        series.setData([]);
+        continue;
+      }
+
+      const isReset = nextData.length <= prevData.length;
+      const isJump = nextData.length - prevData.length > 1;
+
+      if (isReset || isJump) {
+        series.setData(nextData);
+      } else {
+        const latest = nextData[nextData.length - 1];
+        if (latest) {
+          series.update(latest);
+        }
+      }
+    }
+  },
+  { deep: true }
 );
 
 onUnmounted(() => {
