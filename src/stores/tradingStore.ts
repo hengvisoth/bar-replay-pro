@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { UTCTimestamp } from "lightweight-charts";
+import type { Candle } from "../data/types";
 
 type PositionSide = "long" | "short";
 
@@ -10,6 +11,9 @@ interface Position {
   entryPrice: number;
   entryTime: UTCTimestamp;
   side: PositionSide;
+  margin: number;
+  slPrice: number | null;
+  tpPrice: number | null;
 }
 
 interface ClosedTrade extends Position {
@@ -28,12 +32,15 @@ interface TradeMarker {
 }
 
 const STARTING_BALANCE = 10_000;
+const MIN_LEVERAGE = 1;
+const MAX_LEVERAGE = 25;
 
 export const useTradingStore = defineStore("trading", () => {
   const cashBalance = ref(STARTING_BALANCE);
   const openPositions = ref<Position[]>([]);
   const tradeHistory = ref<ClosedTrade[]>([]);
   const realizedPnL = ref(0);
+  const leverage = ref(5);
   let nextPositionId = 1;
 
   const totalOpenSize = computed(() =>
@@ -42,7 +49,12 @@ export const useTradingStore = defineStore("trading", () => {
 
   const availableBalance = computed(() => cashBalance.value);
 
-  function marketBuy(size: number, price: number, time: number) {
+  function marketBuy(
+    size: number,
+    price: number,
+    time: number,
+    options?: { slPrice?: number | null; tpPrice?: number | null }
+  ) {
     if (size <= 0 || price <= 0) return false;
     const tradeTime = time as UTCTimestamp;
 
@@ -53,8 +65,8 @@ export const useTradingStore = defineStore("trading", () => {
       return executed;
     }
 
-    const cost = remaining * price;
-    if (cashBalance.value + 1e-8 < cost) {
+    const margin = calculateMargin(remaining, price);
+    if (cashBalance.value + 1e-8 < margin) {
       return executed;
     }
 
@@ -64,13 +76,21 @@ export const useTradingStore = defineStore("trading", () => {
       entryPrice: price,
       entryTime: tradeTime,
       side: "long",
+      margin,
+      slPrice: sanitizeLevel(options?.slPrice),
+      tpPrice: sanitizeLevel(options?.tpPrice),
     });
-    cashBalance.value -= cost;
+    cashBalance.value -= margin;
     executed = true;
     return executed;
   }
 
-  function marketSell(size: number, price: number, time: number) {
+  function marketSell(
+    size: number,
+    price: number,
+    time: number,
+    options?: { slPrice?: number | null; tpPrice?: number | null }
+  ) {
     if (size <= 0 || price <= 0) return false;
     const tradeTime = time as UTCTimestamp;
 
@@ -81,14 +101,22 @@ export const useTradingStore = defineStore("trading", () => {
       return executed;
     }
 
+    const margin = calculateMargin(remaining, price);
+    if (cashBalance.value + 1e-8 < margin) {
+      return executed;
+    }
+
     openPositions.value.push({
       id: nextPositionId++,
       size: remaining,
       entryPrice: price,
       entryTime: tradeTime,
       side: "short",
+      margin,
+      slPrice: sanitizeLevel(options?.slPrice),
+      tpPrice: sanitizeLevel(options?.tpPrice),
     });
-    cashBalance.value += remaining * price;
+    cashBalance.value -= margin;
     executed = true;
     return executed;
   }
@@ -102,13 +130,8 @@ export const useTradingStore = defineStore("trading", () => {
   }
 
   function getEquity(markPrice?: number | null) {
-    const mark = markPrice ?? null;
-    const positionValue = openPositions.value.reduce((sum, pos) => {
-      const price = mark ?? pos.entryPrice;
-      const direction = pos.side === "long" ? 1 : -1;
-      return sum + pos.size * price * direction;
-    }, 0);
-    return cashBalance.value + positionValue;
+    const unrealized = getUnrealizedPnL(markPrice ?? undefined);
+    return cashBalance.value + unrealized;
   }
 
   const tradeMarkers = computed<TradeMarker[]>(() => {
@@ -175,12 +198,8 @@ export const useTradingStore = defineStore("trading", () => {
       const pnl = (price - position.entryPrice) * closeAmount * direction;
       realizedPnL.value += pnl;
       closed += closeAmount;
-
-      if (targetSide === "long") {
-        cashBalance.value += closeAmount * price;
-      } else {
-        cashBalance.value -= closeAmount * price;
-      }
+      const marginPortion = position.margin * (closeAmount / position.size);
+      cashBalance.value += marginPortion + pnl;
 
       tradeHistory.value.unshift({
         id: position.id,
@@ -190,6 +209,9 @@ export const useTradingStore = defineStore("trading", () => {
         exitPrice: price,
         exitTime: time,
         side: position.side,
+        margin: marginPortion,
+        slPrice: position.slPrice,
+        tpPrice: position.tpPrice,
         pnl,
       });
 
@@ -199,7 +221,13 @@ export const useTradingStore = defineStore("trading", () => {
 
       const remainingSize = position.size - closeAmount;
       if (remainingSize > 1e-8) {
-        updatedPositions.push({ ...position, size: remainingSize });
+        updatedPositions.push({
+          ...position,
+          size: remainingSize,
+          margin: position.margin - marginPortion,
+          slPrice: position.slPrice,
+          tpPrice: position.tpPrice,
+        });
       }
 
       remainingToClose -= closeAmount;
@@ -236,6 +264,64 @@ export const useTradingStore = defineStore("trading", () => {
     return true;
   }
 
+  function checkOrders(candle: Candle) {
+    if (!candle) return;
+    const snapshot = [...openPositions.value];
+    for (const position of snapshot) {
+      const executionPrice = evaluateTriggers(position, candle);
+      if (executionPrice !== null) {
+        closePositions(position.side, position.size, executionPrice, candle.time, {
+          positionId: position.id,
+        });
+      }
+    }
+  }
+
+  function evaluateTriggers(position: Position, candle: Candle): number | null {
+    const { slPrice, tpPrice, side } = position;
+    const { high, low } = candle;
+
+    if (side === "long") {
+      if (slPrice && low <= slPrice) {
+        return slPrice;
+      }
+      if (tpPrice && high >= tpPrice) {
+        return tpPrice;
+      }
+    } else {
+      if (slPrice && high >= slPrice) {
+        return slPrice;
+      }
+      if (tpPrice && low <= tpPrice) {
+        return tpPrice;
+      }
+    }
+
+    return null;
+  }
+
+  function calculateMargin(size: number, price: number) {
+    if (size <= 0 || price <= 0) return 0;
+    return (size * price) / leverage.value;
+  }
+
+  function getMarginRequirement(size: number, price: number) {
+    return calculateMargin(size, price);
+  }
+
+  function setLeverage(value: number) {
+    const normalized = Math.min(
+      MAX_LEVERAGE,
+      Math.max(MIN_LEVERAGE, Math.round(value))
+    );
+    leverage.value = normalized;
+  }
+
+  function sanitizeLevel(value?: number | null) {
+    if (!value || value <= 0) return null;
+    return value;
+  }
+
   return {
     startingBalance: STARTING_BALANCE,
     cashBalance,
@@ -243,13 +329,19 @@ export const useTradingStore = defineStore("trading", () => {
     openPositions,
     tradeHistory,
     realizedPnL,
+    leverage,
+    minLeverage: MIN_LEVERAGE,
+    maxLeverage: MAX_LEVERAGE,
     marketBuy,
     marketSell,
     closePosition,
     closeAllPositions,
+    checkOrders,
     totalOpenSize,
     getUnrealizedPnL,
     getEquity,
     tradeMarkers,
+    setLeverage,
+    getMarginRequirement,
   };
 });

@@ -3,9 +3,21 @@ import { useReplayStore } from "../stores/replayStore";
 
 const store = useReplayStore();
 
+const speedPresets = [
+  { label: "0.5x", interval: 2000 },
+  { label: "1x", interval: 1000 },
+  { label: "2x", interval: 500 },
+  { label: "5x", interval: 200 },
+  { label: "10x", interval: 100 },
+];
+
 function onInput(e: Event) {
   const target = e.target as HTMLInputElement;
   store.jumpTo(parseInt(target.value));
+}
+
+function setSpeed(interval: number) {
+  store.setPlaybackInterval(interval);
 }
 </script>
 
@@ -30,6 +42,25 @@ function onInput(e: Event) {
         @input="onInput"
         class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400"
       />
+    </div>
+
+    <div class="flex items-center gap-2 text-[11px] text-gray-400">
+      <span>Speed</span>
+      <div class="flex gap-1">
+        <button
+          v-for="preset in speedPresets"
+          :key="preset.label"
+          class="px-2 py-1 rounded border text-xs"
+          :class="[
+            store.playbackSpeed === preset.interval
+              ? 'border-blue-500 text-blue-100'
+              : 'border-gray-600 text-gray-400 hover:border-blue-500 hover:text-blue-100',
+          ]"
+          @click="setSpeed(preset.interval)"
+        >
+          {{ preset.label }}
+        </button>
+      </div>
     </div>
 
     <div

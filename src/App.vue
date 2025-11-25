@@ -1,11 +1,25 @@
 <script setup lang="ts">
+import { watch } from "vue";
 import ChartContainer from "./components/ChartContainer.vue";
 import ScrubBar from "./components/ScrubBar.vue";
 import TimeframeTabs from "./components/TimeframeTabs.vue";
 import TradingPanel from "./components/TradingPanel.vue";
 import { useReplayStore } from "./stores/replayStore";
+import { useTradingStore } from "./stores/tradingStore";
 
 const store = useReplayStore();
+const tradingStore = useTradingStore();
+
+watch(
+  () => store.visibleDatasets[store.activeTimeframe],
+  (dataset) => {
+    const candle = dataset?.[dataset.length - 1];
+    if (candle) {
+      tradingStore.checkOrders(candle);
+    }
+  },
+  { deep: true }
+);
 </script>
 
 <template>

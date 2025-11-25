@@ -7,6 +7,9 @@ const tradingStore = useTradingStore();
 const replayStore = useReplayStore();
 
 const orderSize = ref(1);
+const leverageOptions = [1, 2, 3, 5, 10, 15, 20, 25];
+const stopLossPrice = ref<number | null>(null);
+const takeProfitPrice = ref<number | null>(null);
 
 const currentCandle = computed(() => {
   const dataset = replayStore.visibleDatasets[replayStore.activeTimeframe] || [];
@@ -23,6 +26,24 @@ const unrealizedPnL = computed(() =>
 const equity = computed(() => tradingStore.getEquity(currentPrice.value));
 
 const canTrade = computed(() => !!currentPrice.value && !!currentTime.value);
+
+const marginRequirement = computed(() => {
+  if (!currentPrice.value) return 0;
+  return tradingStore.getMarginRequirement(
+    Math.max(orderSize.value, 0),
+    currentPrice.value
+  );
+});
+
+const hasMargin = computed(
+  () =>
+    marginRequirement.value === 0 ||
+    tradingStore.cashBalance + 1e-8 >= marginRequirement.value
+);
+
+const marginColor = computed(() =>
+  !currentPrice.value ? "#9ca3af" : hasMargin.value ? "#26a69a" : "#ef5350"
+);
 
 function formatCurrency(value: number) {
   return Intl.NumberFormat("en-US", {
@@ -46,12 +67,20 @@ function pnlColor(value: number) {
   return value > 0 ? "#26a69a" : "#ef5350";
 }
 
+function normalizedLevel(value: number | null) {
+  return value && value > 0 ? value : null;
+}
+
 function handleBuy() {
   if (!canTrade.value || !currentPrice.value || !currentTime.value) return;
   tradingStore.marketBuy(
     Math.max(orderSize.value, 0.0001),
     currentPrice.value,
-    currentTime.value
+    currentTime.value,
+    {
+      slPrice: normalizedLevel(stopLossPrice.value),
+      tpPrice: normalizedLevel(takeProfitPrice.value),
+    }
   );
 }
 
@@ -60,7 +89,11 @@ function handleSell() {
   tradingStore.marketSell(
     Math.max(orderSize.value, 0.0001),
     currentPrice.value,
-    currentTime.value
+    currentTime.value,
+    {
+      slPrice: normalizedLevel(stopLossPrice.value),
+      tpPrice: normalizedLevel(takeProfitPrice.value),
+    }
   );
 }
 
@@ -72,6 +105,11 @@ function handleCloseAll() {
 function handleClosePosition(positionId: number) {
   if (!currentPrice.value || !currentTime.value) return;
   tradingStore.closePosition(positionId, currentPrice.value, currentTime.value);
+}
+
+function handleLeverageChange(event: Event) {
+  const value = Number((event.target as HTMLSelectElement).value);
+  tradingStore.setLeverage(value);
 }
 
 const enrichedPositions = computed(() => {
@@ -123,6 +161,50 @@ function formatTimestamp(ts?: number) {
         />
         <span class="text-xs text-gray-500">Qty</span>
       </div>
+      <div class="flex items-center justify-between text-xs text-gray-400">
+        <span>Leverage</span>
+        <select
+          class="bg-[#111a2c] border border-gray-700 rounded px-2 py-1 text-gray-100 text-xs"
+          :value="tradingStore.leverage"
+          @change="handleLeverageChange"
+        >
+          <option
+            v-for="value in leverageOptions"
+            :key="value"
+            :value="value"
+          >
+            {{ value }}x
+          </option>
+        </select>
+      </div>
+      <div class="flex justify-between text-xs" :style="{ color: marginColor }">
+        <span>Margin Required ({{ tradingStore.leverage }}x)</span>
+        <span>{{ formatCurrency(marginRequirement) }}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-2 pt-2">
+        <div class="flex items-center gap-2">
+          <input
+            v-model.number="stopLossPrice"
+            type="number"
+            min="0"
+            step="0.01"
+            class="w-full rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+            placeholder="SL Price"
+          />
+          <span class="text-xs text-gray-500">SL</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <input
+            v-model.number="takeProfitPrice"
+            type="number"
+            min="0"
+            step="0.01"
+            class="w-full rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+            placeholder="TP Price"
+          />
+          <span class="text-xs text-gray-500">TP</span>
+        </div>
+      </div>
       <div class="grid grid-cols-2 gap-2 pt-2">
         <button
           class="py-2 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-semibold disabled:opacity-40"
@@ -173,6 +255,14 @@ function formatTimestamp(ts?: number) {
             <div class="flex justify-between">
               <span>Entry</span>
               <span>{{ formatNumber(position.entryPrice) }}</span>
+            </div>
+            <div v-if="position.slPrice" class="flex justify-between">
+              <span>SL</span>
+              <span>{{ formatNumber(position.slPrice) }}</span>
+            </div>
+            <div v-if="position.tpPrice" class="flex justify-between">
+              <span>TP</span>
+              <span>{{ formatNumber(position.tpPrice) }}</span>
             </div>
             <div class="flex justify-between">
               <span>Unrealized</span>

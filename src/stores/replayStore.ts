@@ -45,7 +45,7 @@ export const useReplayStore = defineStore("replay", () => {
   >({});
 
   const isPlaying = ref(false);
-  const playbackSpeed = ref(100);
+  const playbackSpeed = ref(1000);
   const activeTimeframe = ref<Timeframe>("1h");
   const activeIndicators = ref<IndicatorState>({ ...defaultIndicatorState });
 
@@ -197,6 +197,16 @@ export const useReplayStore = defineStore("replay", () => {
     }
   }
 
+  function setPlaybackInterval(intervalMs: number) {
+    playbackSpeed.value = intervalMs;
+    if (isPlaying.value) {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      intervalId = setInterval(nextTick, playbackSpeed.value);
+    }
+  }
+
   // Formatted Date for UI
   const currentDate = computed(() => {
     if (!currentReplayTime.value) return "";
@@ -220,6 +230,7 @@ export const useReplayStore = defineStore("replay", () => {
     visibleDatasets,
     visibleIndicators,
     isPlaying,
+    playbackSpeed,
     currentReplayTime,
     currentDate,
     totalCandles,
@@ -230,6 +241,7 @@ export const useReplayStore = defineStore("replay", () => {
     setActiveTimeframe,
     toggleIndicator,
     isIndicatorActive,
+    setPlaybackInterval,
   };
 });
 
