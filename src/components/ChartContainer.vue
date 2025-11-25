@@ -86,25 +86,21 @@ function handleResize() {
   <div class="relative w-screen h-screen bg-[#10141f] overflow-hidden">
     <div ref="chartContainer" class="w-full h-full"></div>
 
-    <div
-      class="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 bg-gray-800/90 border border-gray-700 p-2 rounded-lg shadow-xl backdrop-blur-md"
+    <button
+      @click="store.togglePlay"
+      class="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold transition-colors"
     >
-      <button
-        @click="store.togglePlay"
-        class="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold transition-colors"
-      >
-        <span v-if="!store.isPlaying">▶ Play</span>
-        <span v-else>⏸ Pause</span>
-      </button>
+      <span v-if="!store.isPlaying">▶ Play</span>
+      <span v-else>⏸ Pause</span>
+    </button>
 
-      <div
-        class="flex flex-col text-xs text-gray-400 px-2 border-l border-gray-600"
-      >
-        <span>CANDLES</span>
-        <span class="text-white font-mono text-base">
-          {{ store.visibleCandles.length }} / {{ store.allCandles.length }}
-        </span>
-      </div>
+    <div
+      class="flex flex-col text-xs text-gray-400 px-2 border-l border-gray-600"
+    >
+      <span>CANDLES</span>
+      <span class="text-white font-mono text-base">
+        {{ store.visibleCandles.length }} / {{ store.allCandles.length }}
+      </span>
     </div>
   </div>
 </template>

@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import ChartContainer from "./components/ChartContainer.vue";
+import ScrubBar from "./components/ScrubBar.vue";
 </script>
 
 <template>
-  <ChartContainer />
-</template>
+  <div class="flex flex-col w-screen h-screen bg-[#10141f] overflow-hidden">
+    <div class="flex-1 relative overflow-hidden">
+      <ChartContainer />
+    </div>
 
-<style>
-/* Global resets if needed */
-body {
-  margin: 0;
-  background-color: #000;
-}
-</style>
+    <div class="flex-none">
+      <ScrubBar />
+    </div>
+  </div>
+</template>

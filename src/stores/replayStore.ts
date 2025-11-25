@@ -63,11 +63,30 @@ export const useReplayStore = defineStore("replay", () => {
     }
   }
 
+  function jumpTo(index: number) {
+    // Boundary checks
+    if (index < 0) index = 0;
+    if (index >= allCandles.value.length) index = allCandles.value.length - 1;
+
+    currentIndex.value = index;
+    updateView();
+  }
+
+  const currentDate = computed(() => {
+    if (allCandles.value.length === 0) return "";
+    const c = allCandles.value[currentIndex.value];
+    if (!c) return "";
+    return new Date(c.time * 1000).toLocaleString();
+  });
+
   return {
     allCandles,
     visibleCandles,
     isPlaying,
+    currentIndex, // Export this so we can bind to it
+    currentDate, // Export the date string
     loadData,
     togglePlay,
+    jumpTo, // Export the new action
   };
 });
