@@ -25,8 +25,8 @@ function onInput(e: Event) {
       <input
         type="range"
         min="0"
-        :max="store.allCandles.length - 1"
-        :value="store.currentIndex"
+        :max="Math.max(store.totalCandles - 1, 0)"
+        :value="store.masterIndex"
         @input="onInput"
         class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400"
       />
@@ -51,7 +51,7 @@ input[type="range"]::-webkit-slider-thumb {
   height: 16px;
   width: 16px;
   border-radius: 50%;
-  background: #3b82f6; /* Blue-500 */
+  background: #3b82f6;
   margin-top: -4px;
   box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
 }

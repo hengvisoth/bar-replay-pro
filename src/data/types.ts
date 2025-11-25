@@ -1,12 +1,9 @@
 // src/data/types.ts
 
-export interface Candle {
-  time: number; // Unix Timestamp in SECONDS
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
+import type { CandlestickData, UTCTimestamp } from "lightweight-charts";
+
+export interface Candle extends CandlestickData<UTCTimestamp> {
+  volume?: number;
 }
 
 // We use this type to identify which timeframe we are loading
