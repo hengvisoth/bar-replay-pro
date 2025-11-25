@@ -6,7 +6,7 @@ import { useReplayStore } from "../stores/replayStore";
 const tradingStore = useTradingStore();
 const replayStore = useReplayStore();
 
-const orderSize = ref(1);
+const orderMargin = ref(100);
 const leverageOptions = [1, 2, 3, 5, 10, 15, 20, 25];
 const stopLossPrice = ref<number | null>(null);
 const takeProfitPrice = ref<number | null>(null);
@@ -27,12 +27,13 @@ const equity = computed(() => tradingStore.getEquity(currentPrice.value));
 
 const canTrade = computed(() => !!currentPrice.value && !!currentTime.value);
 
-const marginRequirement = computed(() => {
+const calculatedSize = computed(() => {
   if (!currentPrice.value) return 0;
-  return tradingStore.getMarginRequirement(
-    Math.max(orderSize.value, 0),
-    currentPrice.value
-  );
+  return (orderMargin.value * tradingStore.leverage) / currentPrice.value;
+});
+
+const marginRequirement = computed(() => {
+  return Math.max(orderMargin.value, 0);
 });
 
 const hasMargin = computed(
@@ -41,9 +42,29 @@ const hasMargin = computed(
     tradingStore.cashBalance + 1e-8 >= marginRequirement.value
 );
 
+const formattedMarginRequirement = computed(() =>
+  formatCurrency(marginRequirement.value)
+);
+
 const marginColor = computed(() =>
   !currentPrice.value ? "#9ca3af" : hasMargin.value ? "#26a69a" : "#ef5350"
 );
+
+const entryPrice = computed(() => currentPrice.value ?? 0);
+
+const projectedSlPnl = computed(() => {
+  if (!entryPrice.value || !stopLossPrice.value) return null;
+  const size = calculatedSize.value;
+  if (size <= 0) return null;
+  return (stopLossPrice.value - entryPrice.value) * size;
+});
+
+const projectedTpPnl = computed(() => {
+  if (!entryPrice.value || !takeProfitPrice.value) return null;
+  const size = calculatedSize.value;
+  if (size <= 0) return null;
+  return (takeProfitPrice.value - entryPrice.value) * size;
+});
 
 function formatCurrency(value: number) {
   return Intl.NumberFormat("en-US", {
@@ -73,8 +94,11 @@ function normalizedLevel(value: number | null) {
 
 function handleBuy() {
   if (!canTrade.value || !currentPrice.value || !currentTime.value) return;
+  if (!hasMargin.value) return;
+  const qty = calculatedSize.value;
+  if (qty <= 0) return;
   tradingStore.marketBuy(
-    Math.max(orderSize.value, 0.0001),
+    qty,
     currentPrice.value,
     currentTime.value,
     {
@@ -86,8 +110,11 @@ function handleBuy() {
 
 function handleSell() {
   if (!currentPrice.value || !currentTime.value) return;
+  if (!hasMargin.value) return;
+  const qty = calculatedSize.value;
+  if (qty <= 0) return;
   tradingStore.marketSell(
-    Math.max(orderSize.value, 0.0001),
+    qty,
     currentPrice.value,
     currentTime.value,
     {
@@ -153,13 +180,14 @@ function formatTimestamp(ts?: number) {
       </div>
       <div class="pt-2 flex items-center gap-2">
         <input
-          v-model.number="orderSize"
+          v-model.number="orderMargin"
           type="number"
-          min="0.001"
-          step="0.001"
+          min="1"
+          step="1"
           class="flex-1 rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+          placeholder="Order Margin (USDT)"
         />
-        <span class="text-xs text-gray-500">Qty</span>
+        <span class="text-xs text-gray-500">USDT</span>
       </div>
       <div class="flex items-center justify-between text-xs text-gray-400">
         <span>Leverage</span>
@@ -177,9 +205,16 @@ function formatTimestamp(ts?: number) {
           </option>
         </select>
       </div>
-      <div class="flex justify-between text-xs" :style="{ color: marginColor }">
+      <div
+        class="flex justify-between text-xs px-2 py-1 rounded border"
+        :style="{ color: marginColor, borderColor: marginColor }"
+      >
         <span>Margin Required ({{ tradingStore.leverage }}x)</span>
-        <span>{{ formatCurrency(marginRequirement) }}</span>
+        <span>{{ formattedMarginRequirement }}</span>
+      </div>
+      <div class="flex justify-between text-[11px] text-gray-500">
+        <span>Est. Qty</span>
+        <span class="text-gray-200">{{ formatNumber(calculatedSize || 0) }}</span>
       </div>
       <div class="grid grid-cols-2 gap-2 pt-2">
         <div class="flex items-center gap-2">
@@ -205,17 +240,31 @@ function formatTimestamp(ts?: number) {
           <span class="text-xs text-gray-500">TP</span>
         </div>
       </div>
+      <div class="grid grid-cols-2 text-[11px] text-gray-400">
+        <div v-if="projectedSlPnl !== null">
+          SL PnL (long):
+          <span :style="{ color: pnlColor(projectedSlPnl) }">
+            {{ formatSigned(projectedSlPnl) }}
+          </span>
+        </div>
+        <div v-if="projectedTpPnl !== null">
+          TP PnL (long):
+          <span :style="{ color: pnlColor(projectedTpPnl) }">
+            {{ formatSigned(projectedTpPnl) }}
+          </span>
+        </div>
+      </div>
       <div class="grid grid-cols-2 gap-2 pt-2">
         <button
           class="py-2 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-semibold disabled:opacity-40"
-          :disabled="!canTrade"
+          :disabled="!canTrade || !hasMargin"
           @click="handleBuy"
         >
           Buy @ {{ currentPrice ? formatNumber(currentPrice) : '--' }}
         </button>
         <button
           class="py-2 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-semibold disabled:opacity-40"
-          :disabled="!canTrade"
+          :disabled="!canTrade || !hasMargin"
           @click="handleSell"
         >
           Sell / Short
@@ -255,6 +304,10 @@ function formatTimestamp(ts?: number) {
             <div class="flex justify-between">
               <span>Entry</span>
               <span>{{ formatNumber(position.entryPrice) }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Leverage</span>
+              <span>{{ position.leverage }}x</span>
             </div>
             <div v-if="position.slPrice" class="flex justify-between">
               <span>SL</span>
@@ -308,6 +361,10 @@ function formatTimestamp(ts?: number) {
             <div class="flex justify-between">
               <span>Entry/Exit</span>
               <span>{{ formatNumber(trade.entryPrice) }} → {{ formatNumber(trade.exitPrice) }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Leverage</span>
+              <span>{{ trade.leverage }}x</span>
             </div>
             <div class="flex justify-between">
               <span>PnL</span>

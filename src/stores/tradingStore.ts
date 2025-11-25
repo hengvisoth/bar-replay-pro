@@ -14,6 +14,7 @@ interface Position {
   margin: number;
   slPrice: number | null;
   tpPrice: number | null;
+  leverage: number;
 }
 
 interface ClosedTrade extends Position {
@@ -79,6 +80,7 @@ export const useTradingStore = defineStore("trading", () => {
       margin,
       slPrice: sanitizeLevel(options?.slPrice),
       tpPrice: sanitizeLevel(options?.tpPrice),
+      leverage: leverage.value,
     });
     cashBalance.value -= margin;
     executed = true;
@@ -115,6 +117,7 @@ export const useTradingStore = defineStore("trading", () => {
       margin,
       slPrice: sanitizeLevel(options?.slPrice),
       tpPrice: sanitizeLevel(options?.tpPrice),
+      leverage: leverage.value,
     });
     cashBalance.value -= margin;
     executed = true;
@@ -212,6 +215,7 @@ export const useTradingStore = defineStore("trading", () => {
         margin: marginPortion,
         slPrice: position.slPrice,
         tpPrice: position.tpPrice,
+        leverage: position.leverage,
         pnl,
       });
 
@@ -227,6 +231,7 @@ export const useTradingStore = defineStore("trading", () => {
           margin: position.margin - marginPortion,
           slPrice: position.slPrice,
           tpPrice: position.tpPrice,
+          leverage: position.leverage,
         });
       }
 
