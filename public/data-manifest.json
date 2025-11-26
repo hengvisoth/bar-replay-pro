@@ -1,0 +1,62 @@
+{
+  "ETHUSDT": {
+    "15m": [
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-01.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-02.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-03.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-04.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-05.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-06.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-07.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-08.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-09.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-10.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-11.csv",
+      "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-12.csv"
+    ],
+    "1h": [
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-01.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-02.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-03.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-04.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-05.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-06.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-07.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-08.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-09.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-10.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-11.csv",
+      "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-12.csv"
+    ]
+  },
+  "SOLUSDT": {
+    "15m": [
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-01.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-02.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-03.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-04.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-05.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-06.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-07.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-08.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-09.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-10.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-11.csv",
+      "data/raw/SOLUSDT/15m/2024/SOLUSDT-15m-2024-12.csv"
+    ],
+    "1h": [
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-01.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-02.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-03.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-04.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-05.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-06.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-07.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-08.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-09.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-10.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-11.csv",
+      "data/raw/SOLUSDT/1h/2024/SOLUSDT-1h-2024-12.csv"
+    ]
+  }
+}
