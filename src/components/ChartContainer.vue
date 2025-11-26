@@ -10,6 +10,8 @@ import {
   type SeriesDataItemTypeMap,
   type LogicalRange,
   createSeriesMarkers,
+  LineStyle,
+  type IPriceLine,
 } from "lightweight-charts";
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
@@ -37,6 +39,8 @@ let candleSeries: ISeriesApi<"Candlestick"> | null = null;
 let indicatorSeries: Record<string, ISeriesApi<"Line">> = {};
 let unsubscribeRangeWatcher: (() => void) | null = null;
 let tradeMarkersPrimitive: ReturnType<typeof createSeriesMarkers> | null = null;
+let clickHandler: ((param: MouseEventParams) => void) | null = null;
+let orderPriceLines: Record<number, IPriceLine> = {};
 
 onMounted(async () => {
   if (!chartContainer.value) return;
@@ -68,6 +72,14 @@ onMounted(async () => {
     });
   }
 
+  clickHandler = (param: MouseEventParams) => {
+    if (!store.isSelectingReplay || !param.time) return;
+    if (typeof param.time === "number") {
+      store.setReplayStart(param.time);
+    }
+  };
+  chart.subscribeClick(clickHandler);
+
   // --- LEGEND LOGIC ---
   // Subscribe to crosshair moves to update Legend
   chart.subscribeCrosshairMove((param: MouseEventParams) => {
@@ -94,6 +106,7 @@ onMounted(async () => {
   initChartData();
   initIndicatorData();
   updateTradeMarkers();
+  updatePendingOrderLines();
   const timeScale = chart.timeScale();
   const handleRangeChange = (range: LogicalRange | null) => {
     if (!range) return;
@@ -229,6 +242,14 @@ watch(
   { deep: true }
 );
 
+watch(
+  () => tradingStore.pendingOrders,
+  () => {
+    updatePendingOrderLines();
+  },
+  { deep: true }
+);
+
 onUnmounted(() => {
   window.removeEventListener("resize", handleResize);
   if (unsubscribeRangeWatcher) {
@@ -236,7 +257,12 @@ onUnmounted(() => {
     unsubscribeRangeWatcher = null;
   }
   tradeMarkersPrimitive = null;
+  if (chart && clickHandler) {
+    chart.unsubscribeClick(clickHandler);
+  }
+  clearPendingOrderLines();
   if (chart) chart.remove();
+  clickHandler = null;
 });
 
 function handleResize() {
@@ -281,12 +307,68 @@ function updateTradeMarkers() {
   }));
   tradeMarkersPrimitive.setMarkers(markers);
 }
+
+function updatePendingOrderLines() {
+  if (!candleSeries) return;
+  const activeOrders = tradingStore.pendingOrders;
+  const existingIds = new Set(Object.keys(orderPriceLines).map((id) => Number(id)));
+
+  for (const order of activeOrders) {
+    const color = order.side === "long" ? "#26a69a" : "#ef5350";
+    const label = `${order.side === "long" ? "Buy" : "Sell"} ${order.orderType.toUpperCase()}`;
+    const lineOptions = {
+      price: order.price,
+      color,
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      axisLabelVisible: true,
+      title: label,
+    };
+
+    const existingLine = orderPriceLines[order.id];
+    if (existingLine) {
+      existingLine.applyOptions(lineOptions);
+    } else {
+      orderPriceLines[order.id] = candleSeries.createPriceLine(lineOptions);
+    }
+
+    existingIds.delete(order.id);
+  }
+
+  existingIds.forEach((id) => {
+    const line = orderPriceLines[id];
+    if (line && candleSeries) {
+      candleSeries.removePriceLine(line);
+    }
+    delete orderPriceLines[id];
+  });
+}
+
+function clearPendingOrderLines() {
+  if (!candleSeries) {
+    orderPriceLines = {};
+    return;
+  }
+  for (const line of Object.values(orderPriceLines)) {
+    candleSeries.removePriceLine(line);
+  }
+  orderPriceLines = {};
+}
 </script>
 
 <template>
   <div
     class="relative w-full h-full bg-[#10141f] overflow-hidden border-r border-gray-800"
+    :class="store.isSelectingReplay ? 'cursor-crosshair ring-1 ring-blue-500/50' : ''"
   >
+    <div
+      v-if="store.isSelectingReplay"
+      class="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+    >
+      <div class="px-3 py-2 bg-blue-600/90 text-xs font-semibold rounded shadow-lg">
+        Click a candle to start replay
+      </div>
+    </div>
     <!-- The Legend Overlay -->
     <ChartLegend
       :candle="hoveredCandle"

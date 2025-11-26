@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { useTradingStore } from "../stores/tradingStore";
 import { useReplayStore } from "../stores/replayStore";
 
@@ -10,6 +10,8 @@ const orderMargin = ref(100);
 const leverageOptions = [1, 2, 3, 5, 10, 15, 20, 25];
 const stopLossPrice = ref<number | null>(null);
 const takeProfitPrice = ref<number | null>(null);
+const orderMode = ref<"market" | "pending">("market");
+const pendingEntryPrice = ref<number | null>(null);
 
 const currentCandle = computed(() => {
   const dataset = replayStore.visibleDatasets[replayStore.activeTimeframe] || [];
@@ -50,20 +52,45 @@ const marginColor = computed(() =>
   !currentPrice.value ? "#9ca3af" : hasMargin.value ? "#26a69a" : "#ef5350"
 );
 
-const entryPrice = computed(() => currentPrice.value ?? 0);
+const effectiveEntryPrice = computed(() => {
+  if (orderMode.value === "pending" && pendingEntryPrice.value) {
+    return pendingEntryPrice.value;
+  }
+  return currentPrice.value ?? null;
+});
+
+const pendingOrderHint = computed(() => {
+  if (orderMode.value !== "pending") {
+    return "Market orders execute immediately at the current price.";
+  }
+  if (!pendingEntryPrice.value || !currentPrice.value) {
+    return "Set an entry price to create a limit or stop order.";
+  }
+  const buyType = determineOrderType("long", pendingEntryPrice.value, currentPrice.value);
+  const sellType = determineOrderType("short", pendingEntryPrice.value, currentPrice.value);
+  return `Buy ${buyType?.toUpperCase() ?? "--"} / Sell ${sellType?.toUpperCase() ?? "--"}`;
+});
 
 const projectedSlPnl = computed(() => {
-  if (!entryPrice.value || !stopLossPrice.value) return null;
+  if (!effectiveEntryPrice.value || !stopLossPrice.value) return null;
   const size = calculatedSize.value;
   if (size <= 0) return null;
-  return (stopLossPrice.value - entryPrice.value) * size;
+  const diff = stopLossPrice.value - effectiveEntryPrice.value;
+  return {
+    long: diff * size,
+    short: -diff * size,
+  };
 });
 
 const projectedTpPnl = computed(() => {
-  if (!entryPrice.value || !takeProfitPrice.value) return null;
+  if (!effectiveEntryPrice.value || !takeProfitPrice.value) return null;
   const size = calculatedSize.value;
   if (size <= 0) return null;
-  return (takeProfitPrice.value - entryPrice.value) * size;
+  const diff = takeProfitPrice.value - effectiveEntryPrice.value;
+  return {
+    long: diff * size,
+    short: -diff * size,
+  };
 });
 
 function formatCurrency(value: number) {
@@ -92,36 +119,45 @@ function normalizedLevel(value: number | null) {
   return value && value > 0 ? value : null;
 }
 
+function resetProtectionLevels() {
+  stopLossPrice.value = null;
+  takeProfitPrice.value = null;
+}
+
 function handleBuy() {
+  if (orderMode.value === "pending") {
+    placePendingOrder("long");
+    return;
+  }
   if (!canTrade.value || !currentPrice.value || !currentTime.value) return;
   if (!hasMargin.value) return;
   const qty = calculatedSize.value;
   if (qty <= 0) return;
-  tradingStore.marketBuy(
-    qty,
-    currentPrice.value,
-    currentTime.value,
-    {
-      slPrice: normalizedLevel(stopLossPrice.value),
-      tpPrice: normalizedLevel(takeProfitPrice.value),
-    }
-  );
+  const executed = tradingStore.marketBuy(qty, currentPrice.value, currentTime.value, {
+    slPrice: normalizedLevel(stopLossPrice.value),
+    tpPrice: normalizedLevel(takeProfitPrice.value),
+  });
+  if (executed) {
+    resetProtectionLevels();
+  }
 }
 
 function handleSell() {
+  if (orderMode.value === "pending") {
+    placePendingOrder("short");
+    return;
+  }
   if (!currentPrice.value || !currentTime.value) return;
   if (!hasMargin.value) return;
   const qty = calculatedSize.value;
   if (qty <= 0) return;
-  tradingStore.marketSell(
-    qty,
-    currentPrice.value,
-    currentTime.value,
-    {
-      slPrice: normalizedLevel(stopLossPrice.value),
-      tpPrice: normalizedLevel(takeProfitPrice.value),
-    }
-  );
+  const executed = tradingStore.marketSell(qty, currentPrice.value, currentTime.value, {
+    slPrice: normalizedLevel(stopLossPrice.value),
+    tpPrice: normalizedLevel(takeProfitPrice.value),
+  });
+  if (executed) {
+    resetProtectionLevels();
+  }
 }
 
 function handleCloseAll() {
@@ -153,26 +189,98 @@ function formatTimestamp(ts?: number) {
   if (!ts) return "-";
   return new Date(ts * 1000).toLocaleString();
 }
+
+function determineOrderType(
+  side: "long" | "short",
+  targetPrice: number,
+  referencePrice: number | null
+): "limit" | "stop" | null {
+  if (!referencePrice) return null;
+  if (side === "long") {
+    return targetPrice <= referencePrice ? "limit" : "stop";
+  }
+  return targetPrice >= referencePrice ? "limit" : "stop";
+}
+
+function placePendingOrder(side: "long" | "short") {
+  if (
+    !canTrade.value ||
+    !currentPrice.value ||
+    !currentTime.value ||
+    !pendingEntryPrice.value ||
+    pendingEntryPrice.value <= 0
+  ) {
+    return;
+  }
+  if (!hasMargin.value) return;
+  const qty = calculatedSize.value;
+  if (qty <= 0) return;
+  const orderType = determineOrderType(side, pendingEntryPrice.value, currentPrice.value);
+  if (!orderType) return;
+  const placed = tradingStore.placeOrder(
+    side,
+    orderType,
+    pendingEntryPrice.value,
+    qty,
+    currentTime.value,
+    {
+      slPrice: normalizedLevel(stopLossPrice.value),
+      tpPrice: normalizedLevel(takeProfitPrice.value),
+    }
+  );
+  if (placed) {
+    resetProtectionLevels();
+  }
+}
+
+function pendingButtonText(side: "long" | "short") {
+  if (orderMode.value === "market") {
+    if (side === "long") {
+      return `Buy @ ${currentPrice.value ? formatNumber(currentPrice.value) : "--"}`;
+    }
+    return "Sell / Short";
+  }
+
+  const typeLabel =
+    pendingEntryPrice.value && currentPrice.value
+      ? determineOrderType(side, pendingEntryPrice.value, currentPrice.value)?.toUpperCase()
+      : null;
+
+  const action = side === "long" ? "Place Buy" : "Place Sell";
+  return typeLabel ? `${action} (${typeLabel})` : `${action} Order`;
+}
+
+function handleCancelOrder(orderId: number) {
+  tradingStore.cancelOrder(orderId);
+}
+
+watch(orderMode, (mode) => {
+  if (mode === "market") {
+    pendingEntryPrice.value = null;
+  } else if (!pendingEntryPrice.value && currentPrice.value) {
+    pendingEntryPrice.value = currentPrice.value;
+  }
+});
 </script>
 
 <template>
-  <div class="w-full md:w-80 lg:w-96 bg-[#0b111e] border-l border-gray-800 flex flex-col">
+  <div class="w-full md:w-80 lg:w-96 bg-[#0b111e] border-l border-gray-800 flex flex-col text-sm">
     <div class="p-4 border-b border-gray-800 space-y-3">
-      <div class="flex justify-between text-xs text-gray-400">
+      <div class="flex justify-between text-sm text-gray-300">
         <span>Cash</span>
         <span>{{ formatCurrency(tradingStore.cashBalance) }}</span>
       </div>
-      <div class="flex justify-between text-xs text-gray-400">
+      <div class="flex justify-between text-sm text-gray-300">
         <span>Equity</span>
         <span>{{ formatCurrency(equity) }}</span>
       </div>
-      <div class="flex justify-between text-xs text-gray-400">
+      <div class="flex justify-between text-sm text-gray-300">
         <span>Realized PnL</span>
         <span :style="{ color: pnlColor(tradingStore.realizedPnL) }">
           {{ formatSigned(tradingStore.realizedPnL) }}
         </span>
       </div>
-      <div class="flex justify-between text-xs text-gray-400">
+      <div class="flex justify-between text-sm text-gray-300">
         <span>Unrealized PnL</span>
         <span :style="{ color: pnlColor(unrealizedPnL) }">
           {{ formatSigned(unrealizedPnL) }}
@@ -187,12 +295,12 @@ function formatTimestamp(ts?: number) {
           class="flex-1 rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
           placeholder="Order Margin (USDT)"
         />
-        <span class="text-xs text-gray-500">USDT</span>
+        <span class="text-sm text-gray-400">USDT</span>
       </div>
-      <div class="flex items-center justify-between text-xs text-gray-400">
+      <div class="flex items-center justify-between text-sm text-gray-300">
         <span>Leverage</span>
         <select
-          class="bg-[#111a2c] border border-gray-700 rounded px-2 py-1 text-gray-100 text-xs"
+          class="bg-[#111a2c] border border-gray-700 rounded px-2 py-1 text-gray-100 text-sm"
           :value="tradingStore.leverage"
           @change="handleLeverageChange"
         >
@@ -206,15 +314,53 @@ function formatTimestamp(ts?: number) {
         </select>
       </div>
       <div
-        class="flex justify-between text-xs px-2 py-1 rounded border"
+        class="flex justify-between text-sm px-2 py-1 rounded border"
         :style="{ color: marginColor, borderColor: marginColor }"
       >
         <span>Margin Required ({{ tradingStore.leverage }}x)</span>
         <span>{{ formattedMarginRequirement }}</span>
       </div>
-      <div class="flex justify-between text-[11px] text-gray-500">
+      <div class="flex justify-between text-sm text-gray-400">
         <span>Est. Qty</span>
         <span class="text-gray-200">{{ formatNumber(calculatedSize || 0) }}</span>
+      </div>
+      <div class="flex items-center gap-2 text-sm text-gray-300">
+        <button
+          type="button"
+          class="flex-1 py-1.5 rounded border font-semibold"
+          :class="
+            orderMode === 'market'
+              ? 'border-blue-500 text-blue-100 bg-blue-500/20'
+              : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100'
+          "
+          @click="orderMode = 'market'"
+        >
+          Market
+        </button>
+        <button
+          type="button"
+          class="flex-1 py-1.5 rounded border font-semibold"
+          :class="
+            orderMode === 'pending'
+              ? 'border-blue-500 text-blue-100 bg-blue-500/20'
+              : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100'
+          "
+          @click="orderMode = 'pending'"
+        >
+          Limit / Stop
+        </button>
+      </div>
+      <div class="text-sm text-gray-400">{{ pendingOrderHint }}</div>
+      <div v-if="orderMode === 'pending'" class="space-y-1">
+        <label class="text-sm uppercase tracking-widest text-gray-400">Entry Price</label>
+        <input
+          v-model.number="pendingEntryPrice"
+          type="number"
+          min="0"
+          step="0.01"
+          class="w-full rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+          placeholder="Entry Price"
+        />
       </div>
       <div class="grid grid-cols-2 gap-2 pt-2">
         <div class="flex items-center gap-2">
@@ -226,7 +372,7 @@ function formatTimestamp(ts?: number) {
             class="w-full rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
             placeholder="SL Price"
           />
-          <span class="text-xs text-gray-500">SL</span>
+          <span class="text-sm text-gray-400">SL</span>
         </div>
         <div class="flex items-center gap-2">
           <input
@@ -237,37 +383,55 @@ function formatTimestamp(ts?: number) {
             class="w-full rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
             placeholder="TP Price"
           />
-          <span class="text-xs text-gray-500">TP</span>
+          <span class="text-sm text-gray-400">TP</span>
         </div>
       </div>
-      <div class="grid grid-cols-2 text-[11px] text-gray-400">
-        <div v-if="projectedSlPnl !== null">
-          SL PnL (long):
-          <span :style="{ color: pnlColor(projectedSlPnl) }">
-            {{ formatSigned(projectedSlPnl) }}
-          </span>
+      <div class="space-y-2 text-sm text-gray-300">
+        <div v-if="projectedSlPnl">
+          <div class="font-semibold">SL PnL</div>
+          <div class="flex gap-4">
+            <span :style="{ color: pnlColor(projectedSlPnl.long) }">
+              Buy: {{ formatSigned(projectedSlPnl.long) }}
+            </span>
+            <span :style="{ color: pnlColor(projectedSlPnl.short) }">
+              Sell: {{ formatSigned(projectedSlPnl.short) }}
+            </span>
+          </div>
         </div>
-        <div v-if="projectedTpPnl !== null">
-          TP PnL (long):
-          <span :style="{ color: pnlColor(projectedTpPnl) }">
-            {{ formatSigned(projectedTpPnl) }}
-          </span>
+        <div v-if="projectedTpPnl">
+          <div class="font-semibold">TP PnL</div>
+          <div class="flex gap-4">
+            <span :style="{ color: pnlColor(projectedTpPnl.long) }">
+              Buy: {{ formatSigned(projectedTpPnl.long) }}
+            </span>
+            <span :style="{ color: pnlColor(projectedTpPnl.short) }">
+              Sell: {{ formatSigned(projectedTpPnl.short) }}
+            </span>
+          </div>
         </div>
       </div>
       <div class="grid grid-cols-2 gap-2 pt-2">
         <button
           class="py-2 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-semibold disabled:opacity-40"
-          :disabled="!canTrade || !hasMargin"
+          :disabled="
+            !canTrade ||
+            !hasMargin ||
+            (orderMode === 'pending' && (!pendingEntryPrice || pendingEntryPrice <= 0))
+          "
           @click="handleBuy"
         >
-          Buy @ {{ currentPrice ? formatNumber(currentPrice) : '--' }}
+          {{ pendingButtonText("long") }}
         </button>
         <button
           class="py-2 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-semibold disabled:opacity-40"
-          :disabled="!canTrade || !hasMargin"
+          :disabled="
+            !canTrade ||
+            !hasMargin ||
+            (orderMode === 'pending' && (!pendingEntryPrice || pendingEntryPrice <= 0))
+          "
           @click="handleSell"
         >
-          Sell / Short
+          {{ pendingButtonText("short") }}
         </button>
       </div>
       <button
@@ -281,17 +445,17 @@ function formatTimestamp(ts?: number) {
 
     <div class="p-4 border-b border-gray-800 flex-1 overflow-auto space-y-4">
       <div>
-        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-2">
+        <h3 class="text-sm uppercase tracking-widest text-gray-400 mb-2">
           Open Positions
         </h3>
-        <div v-if="enrichedPositions.length === 0" class="text-xs text-gray-500">
+        <div v-if="enrichedPositions.length === 0" class="text-sm text-gray-400">
           No open trades.
         </div>
         <div v-else class="space-y-2">
           <div
             v-for="position in enrichedPositions"
             :key="position.id"
-            class="bg-[#10192f] rounded p-2 text-xs text-gray-300"
+            class="bg-[#10192f] rounded p-2 text-sm text-gray-200"
           >
             <div class="flex justify-between">
               <span>Side</span>
@@ -323,11 +487,11 @@ function formatTimestamp(ts?: number) {
                 {{ formatSigned(position.unrealized) }}
               </span>
             </div>
-            <div class="text-[10px] text-gray-500 mt-1">
+            <div class="text-xs text-gray-500 mt-1">
               {{ formatTimestamp(position.entryTime) }}
             </div>
             <button
-              class="mt-2 w-full py-1.5 rounded border border-gray-600 text-gray-200 text-[11px] font-semibold hover:border-blue-500 disabled:opacity-40"
+              class="mt-2 w-full py-1.5 rounded border border-gray-600 text-gray-200 text-sm font-semibold hover:border-blue-500 disabled:opacity-40"
               :disabled="!canTrade"
               @click="handleClosePosition(position.id)"
             >
@@ -338,17 +502,63 @@ function formatTimestamp(ts?: number) {
       </div>
 
       <div>
-        <h3 class="text-xs uppercase tracking-widest text-gray-500 mb-2">
+        <h3 class="text-sm uppercase tracking-widest text-gray-400 mb-2">
+          Working Orders
+        </h3>
+        <div v-if="tradingStore.pendingOrders.length === 0" class="text-sm text-gray-400">
+          No pending orders.
+        </div>
+        <div v-else class="space-y-2">
+          <div
+            v-for="order in tradingStore.pendingOrders"
+            :key="order.id"
+            class="bg-[#10192f] rounded p-2 text-sm text-gray-200"
+          >
+            <div class="flex justify-between">
+              <span>Side / Type</span>
+              <span class="uppercase">{{ order.side }} {{ order.orderType }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Entry</span>
+              <span>{{ formatNumber(order.price) }}</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Size</span>
+              <span>{{ formatNumber(order.size) }}</span>
+            </div>
+            <div v-if="order.slPrice" class="flex justify-between">
+              <span>SL</span>
+              <span>{{ formatNumber(order.slPrice) }}</span>
+            </div>
+            <div v-if="order.tpPrice" class="flex justify-between">
+              <span>TP</span>
+              <span>{{ formatNumber(order.tpPrice) }}</span>
+            </div>
+            <div class="text-xs text-gray-500 mt-1">
+              {{ formatTimestamp(order.createdTime) }}
+            </div>
+            <button
+              class="mt-2 w-full py-1.5 rounded border border-gray-600 text-gray-200 text-sm font-semibold hover:border-red-500"
+              @click="handleCancelOrder(order.id)"
+            >
+              Cancel Order
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="text-sm uppercase tracking-widest text-gray-400 mb-2">
           Trade History
         </h3>
-        <div v-if="tradingStore.tradeHistory.length === 0" class="text-xs text-gray-500">
+        <div v-if="tradingStore.tradeHistory.length === 0" class="text-sm text-gray-400">
           No closed trades.
         </div>
         <div v-else class="space-y-2">
           <div
             v-for="trade in tradingStore.tradeHistory"
             :key="trade.exitTime + '-' + trade.id"
-            class="bg-[#10192f] rounded p-2 text-xs text-gray-300"
+            class="bg-[#10192f] rounded p-2 text-sm text-gray-200"
           >
             <div class="flex justify-between">
               <span>Side</span>
@@ -372,7 +582,7 @@ function formatTimestamp(ts?: number) {
                 {{ formatSigned(trade.pnl) }}
               </span>
             </div>
-            <div class="text-[10px] text-gray-500 mt-1">
+            <div class="text-xs text-gray-500 mt-1">
               {{ formatTimestamp(trade.exitTime) }}
             </div>
           </div>

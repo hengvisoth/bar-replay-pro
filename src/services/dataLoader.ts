@@ -3,14 +3,23 @@
 import type { UTCTimestamp } from "lightweight-charts";
 import type { Candle } from "../data/types";
 
-export async function loadCsvData(
-  symbol: string,
-  timeframe: string,
-  year: string,
-  filename: string
-): Promise<Candle[]> {
-  // 1. Construct URL (Files must be in /public/data/raw/...)
-  const url = `/data/raw/${symbol}/${timeframe}/${year}/${filename}`;
+export type DataManifest = Record<string, Record<string, string[]>>;
+
+export async function fetchManifest(): Promise<DataManifest> {
+  try {
+    const response = await fetch("/data-manifest.json", {
+      cache: "no-cache",
+    });
+    if (!response.ok) throw new Error("Failed to load data manifest");
+    return (await response.json()) as DataManifest;
+  } catch (error) {
+    console.error("Manifest Load Error:", error);
+    return {};
+  }
+}
+
+export async function loadCsvData(filePath: string): Promise<Candle[]> {
+  const url = filePath.startsWith("/") ? filePath : `/${filePath}`;
 
   try {
     const response = await fetch(url);

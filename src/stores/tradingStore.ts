@@ -5,6 +5,8 @@ import type { Candle } from "../data/types";
 
 type PositionSide = "long" | "short";
 
+type OrderType = "limit" | "stop";
+
 interface Position {
   id: number;
   size: number;
@@ -32,6 +34,17 @@ interface TradeMarker {
   text: string;
 }
 
+interface PendingOrder {
+  id: number;
+  side: PositionSide;
+  orderType: OrderType;
+  price: number;
+  size: number;
+  createdTime: UTCTimestamp;
+  slPrice: number | null;
+  tpPrice: number | null;
+}
+
 const STARTING_BALANCE = 10_000;
 const MIN_LEVERAGE = 1;
 const MAX_LEVERAGE = 25;
@@ -39,10 +52,12 @@ const MAX_LEVERAGE = 25;
 export const useTradingStore = defineStore("trading", () => {
   const cashBalance = ref(STARTING_BALANCE);
   const openPositions = ref<Position[]>([]);
+  const pendingOrders = ref<PendingOrder[]>([]);
   const tradeHistory = ref<ClosedTrade[]>([]);
   const realizedPnL = ref(0);
   const leverage = ref(5);
   let nextPositionId = 1;
+  let nextOrderId = 1;
 
   const totalOpenSize = computed(() =>
     openPositions.value.reduce((sum, pos) => sum + pos.size, 0)
@@ -271,6 +286,7 @@ export const useTradingStore = defineStore("trading", () => {
 
   function checkOrders(candle: Candle) {
     if (!candle) return;
+    processPendingOrders(candle);
     const snapshot = [...openPositions.value];
     for (const position of snapshot) {
       const executionPrice = evaluateTriggers(position, candle);
@@ -280,6 +296,52 @@ export const useTradingStore = defineStore("trading", () => {
         });
       }
     }
+  }
+
+  function processPendingOrders(candle: Candle) {
+    if (pendingOrders.value.length === 0) return;
+    const remainingOrders: PendingOrder[] = [];
+
+    for (const order of pendingOrders.value) {
+      if (shouldTriggerOrder(order, candle)) {
+        const filled = executePendingOrder(order, candle);
+        if (!filled) {
+          remainingOrders.push(order);
+        }
+      } else {
+        remainingOrders.push(order);
+      }
+    }
+
+    pendingOrders.value = remainingOrders;
+  }
+
+  function shouldTriggerOrder(order: PendingOrder, candle: Candle) {
+    if (order.side === "long") {
+      if (order.orderType === "limit") {
+        return candle.low <= order.price;
+      }
+      return candle.high >= order.price;
+    } else {
+      if (order.orderType === "limit") {
+        return candle.high >= order.price;
+      }
+      return candle.low <= order.price;
+    }
+  }
+
+  function executePendingOrder(order: PendingOrder, candle: Candle) {
+    if (order.side === "long") {
+      return marketBuy(order.size, order.price, candle.time, {
+        slPrice: order.slPrice,
+        tpPrice: order.tpPrice,
+      });
+    }
+
+    return marketSell(order.size, order.price, candle.time, {
+      slPrice: order.slPrice,
+      tpPrice: order.tpPrice,
+    });
   }
 
   function evaluateTriggers(position: Position, candle: Candle): number | null {
@@ -327,11 +389,40 @@ export const useTradingStore = defineStore("trading", () => {
     return value;
   }
 
+  function placeOrder(
+    side: PositionSide,
+    orderType: OrderType,
+    price: number,
+    size: number,
+    time?: number | null,
+    options?: { slPrice?: number | null; tpPrice?: number | null }
+  ) {
+    if (!time || price <= 0 || size <= 0) return false;
+    const normalizedSl = sanitizeLevel(options?.slPrice ?? null);
+    const normalizedTp = sanitizeLevel(options?.tpPrice ?? null);
+    pendingOrders.value.push({
+      id: nextOrderId++,
+      side,
+      orderType,
+      price,
+      size,
+      createdTime: time as UTCTimestamp,
+      slPrice: normalizedSl,
+      tpPrice: normalizedTp,
+    });
+    return true;
+  }
+
+  function cancelOrder(orderId: number) {
+    pendingOrders.value = pendingOrders.value.filter((order) => order.id !== orderId);
+  }
+
   return {
     startingBalance: STARTING_BALANCE,
     cashBalance,
     availableBalance,
     openPositions,
+    pendingOrders,
     tradeHistory,
     realizedPnL,
     leverage,
@@ -342,6 +433,8 @@ export const useTradingStore = defineStore("trading", () => {
     closePosition,
     closeAllPositions,
     checkOrders,
+    placeOrder,
+    cancelOrder,
     totalOpenSize,
     getUnrealizedPnL,
     getEquity,

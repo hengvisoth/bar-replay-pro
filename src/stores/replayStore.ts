@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import { loadCsvData } from "../services/dataLoader";
+import { fetchManifest, loadCsvData } from "../services/dataLoader";
+import type { DataManifest } from "../services/dataLoader";
 import type {
   Candle,
   Timeframe,
@@ -15,11 +16,6 @@ const TIMEFRAME_STEP_SECONDS: Record<string, number> = {
   "1h": 60 * 60,
 };
 const DATA_SYMBOL = "ETHUSDT";
-const DATA_YEAR = "2024";
-const DATA_FILES: Record<string, string> = {
-  "15m": "ETHUSDT-15m-2024-08.csv",
-  "1h": "ETHUSDT-1h-2024-08.csv",
-};
 const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
   { id: "sma14", label: "SMA 14", type: "sma", period: 14, color: "#f0b90b" },
   { id: "sma50", label: "SMA 50", type: "sma", period: 50, color: "#1abc9c" },
@@ -43,8 +39,10 @@ export const useReplayStore = defineStore("replay", () => {
   const visibleIndicators = ref<
     Record<string, Record<string, IndicatorPoint[]>>
   >({});
+  const dataManifest = ref<DataManifest | null>(null);
 
   const isPlaying = ref(false);
+  const isSelectingReplay = ref(false);
   const playbackSpeed = ref(1000);
   const activeTimeframe = ref<Timeframe>("1h");
   const activeIndicators = ref<IndicatorState>({ ...defaultIndicatorState });
@@ -84,24 +82,48 @@ export const useReplayStore = defineStore("replay", () => {
   // --- ACTIONS ---
 
   async function loadData() {
+    const manifest = await ensureManifest();
+    if (!manifest) return;
+
+    const symbolManifest = manifest[DATA_SYMBOL];
+    if (!symbolManifest) {
+      console.warn(`No manifest entries for symbol ${DATA_SYMBOL}`);
+      return;
+    }
+
     const loaded: Record<string, Candle[]> = {};
 
     await Promise.all(
       AVAILABLE_TIMEFRAMES.map(async (tf) => {
-        const file = DATA_FILES[tf];
-        if (!file) return;
+        const files = symbolManifest[tf] || [];
+        if (files.length === 0) {
+          loaded[tf] = [];
+          return;
+        }
 
-        loaded[tf] = await loadCsvData(DATA_SYMBOL, tf, DATA_YEAR, file);
+        const results = await Promise.all(files.map((filePath) => loadCsvData(filePath)));
+        const merged = results.flat().sort((a, b) => a.time - b.time);
+        loaded[tf] = merged;
       })
     );
 
     datasets.value = loaded;
 
-    const firstCandle = activeDataset.value[0];
-    if (firstCandle) {
-      currentReplayTime.value = firstCandle.time;
+    const activeData = loaded[activeTimeframe.value] || [];
+    const lastCandle = activeData[activeData.length - 1];
+    if (lastCandle) {
+      currentReplayTime.value = lastCandle.time;
       updateView();
     }
+  }
+
+  async function ensureManifest() {
+    if (dataManifest.value) {
+      return dataManifest.value;
+    }
+    const manifest = await fetchManifest();
+    dataManifest.value = manifest;
+    return manifest;
   }
 
   function nextTick() {
@@ -197,6 +219,25 @@ export const useReplayStore = defineStore("replay", () => {
     }
   }
 
+  function toggleReplaySelection() {
+    isSelectingReplay.value = !isSelectingReplay.value;
+    if (isSelectingReplay.value && isPlaying.value) {
+      isPlaying.value = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    }
+  }
+
+  function setReplayStart(time: number | null | undefined) {
+    if (time == null) return;
+    currentReplayTime.value = time;
+    clampReplayTime();
+    updateView();
+    isSelectingReplay.value = false;
+  }
+
   function setPlaybackInterval(intervalMs: number) {
     playbackSpeed.value = intervalMs;
     if (isPlaying.value) {
@@ -230,6 +271,7 @@ export const useReplayStore = defineStore("replay", () => {
     visibleDatasets,
     visibleIndicators,
     isPlaying,
+    isSelectingReplay,
     playbackSpeed,
     currentReplayTime,
     currentDate,
@@ -238,6 +280,8 @@ export const useReplayStore = defineStore("replay", () => {
     loadData,
     togglePlay,
     jumpTo,
+    toggleReplaySelection,
+    setReplayStart,
     setActiveTimeframe,
     toggleIndicator,
     isIndicatorActive,
