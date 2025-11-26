@@ -9,13 +9,13 @@ import type {
   IndicatorDefinition,
 } from "../data/types";
 import { calculateSMA, appendSMA } from "../utils/indicators";
+import { useTradingStore } from "./tradingStore";
 
 const AVAILABLE_TIMEFRAMES: Timeframe[] = ["15m", "1h"];
 const TIMEFRAME_STEP_SECONDS: Record<string, number> = {
   "15m": 60 * 15,
   "1h": 60 * 60,
 };
-const DATA_SYMBOL = "ETHUSDT";
 const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
   { id: "sma14", label: "SMA 14", type: "sma", period: 14, color: "#f0b90b" },
   { id: "sma50", label: "SMA 50", type: "sma", period: 50, color: "#1abc9c" },
@@ -34,12 +34,14 @@ const defaultIndicatorState: IndicatorState = INDICATOR_DEFINITIONS.reduce(
 export const useReplayStore = defineStore("replay", () => {
   // --- STATE ---
   // We now map keys (e.g., "1h", "15m") to data arrays
+  const tradingStore = useTradingStore();
   const datasets = ref<Record<string, Candle[]>>({});
   const visibleDatasets = ref<Record<string, Candle[]>>({});
   const visibleIndicators = ref<
     Record<string, Record<string, IndicatorPoint[]>>
   >({});
   const dataManifest = ref<DataManifest | null>(null);
+  const activeSymbol = ref<string>("ETHUSDT");
 
   const isPlaying = ref(false);
   const isSelectingReplay = ref(false);
@@ -85,9 +87,9 @@ export const useReplayStore = defineStore("replay", () => {
     const manifest = await ensureManifest();
     if (!manifest) return;
 
-    const symbolManifest = manifest[DATA_SYMBOL];
+    const symbolManifest = manifest[activeSymbol.value];
     if (!symbolManifest) {
-      console.warn(`No manifest entries for symbol ${DATA_SYMBOL}`);
+      console.warn(`No manifest entries for symbol ${activeSymbol.value}`);
       return;
     }
 
@@ -124,6 +126,18 @@ export const useReplayStore = defineStore("replay", () => {
     const manifest = await fetchManifest();
     dataManifest.value = manifest;
     return manifest;
+  }
+
+  const availableSymbols = computed(() => Object.keys(dataManifest.value || {}));
+
+  async function setSymbol(symbol: string) {
+    if (symbol === activeSymbol.value) return;
+    activeSymbol.value = symbol;
+    datasets.value = {};
+    visibleDatasets.value = {};
+    visibleIndicators.value = {};
+    tradingStore.resetSession();
+    await loadData();
   }
 
   function nextTick() {
@@ -268,6 +282,8 @@ export const useReplayStore = defineStore("replay", () => {
     activeTimeframe,
     activeIndicators,
     datasets,
+    activeSymbol,
+    availableSymbols,
     visibleDatasets,
     visibleIndicators,
     isPlaying,
@@ -280,6 +296,7 @@ export const useReplayStore = defineStore("replay", () => {
     loadData,
     togglePlay,
     jumpTo,
+    setSymbol,
     toggleReplaySelection,
     setReplayStart,
     setActiveTimeframe,

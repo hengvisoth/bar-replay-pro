@@ -417,6 +417,16 @@ export const useTradingStore = defineStore("trading", () => {
     pendingOrders.value = pendingOrders.value.filter((order) => order.id !== orderId);
   }
 
+  function resetSession() {
+    cashBalance.value = STARTING_BALANCE;
+    openPositions.value = [];
+    pendingOrders.value = [];
+    tradeHistory.value = [];
+    realizedPnL.value = 0;
+    nextPositionId = 1;
+    nextOrderId = 1;
+  }
+
   return {
     startingBalance: STARTING_BALANCE,
     cashBalance,
@@ -435,6 +445,7 @@ export const useTradingStore = defineStore("trading", () => {
     checkOrders,
     placeOrder,
     cancelOrder,
+    resetSession,
     totalOpenSize,
     getUnrealizedPnL,
     getEquity,

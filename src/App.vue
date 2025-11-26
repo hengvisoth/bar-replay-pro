@@ -29,8 +29,26 @@ watch(
       <div
         class="flex items-center gap-4 border-b border-gray-800 bg-[#0b111e] px-4 py-3"
       >
-        <div class="text-[11px] uppercase tracking-[0.3em] text-gray-500">
-          Timeframes
+        <div class="flex items-center gap-3">
+          <div class="text-[11px] uppercase tracking-[0.3em] text-gray-500">
+            Symbol
+          </div>
+          <select
+            class="bg-[#111a2c] border border-gray-700 rounded px-3 py-1 text-xs text-gray-100 focus:outline-none focus:border-blue-500"
+            :value="store.activeSymbol"
+            @change="(event) => store.setSymbol((event.target as HTMLSelectElement).value)"
+          >
+            <option
+              v-for="symbol in store.availableSymbols"
+              :key="symbol"
+              :value="symbol"
+            >
+              {{ symbol }}
+            </option>
+          </select>
+          <div class="text-[11px] uppercase tracking-[0.3em] text-gray-500">
+            Timeframes
+          </div>
         </div>
         <TimeframeTabs />
         <button

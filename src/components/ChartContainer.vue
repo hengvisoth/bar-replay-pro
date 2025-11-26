@@ -372,7 +372,7 @@ function clearPendingOrderLines() {
     <!-- The Legend Overlay -->
     <ChartLegend
       :candle="hoveredCandle"
-      symbol="ETHUSDT"
+      :symbol="store.activeSymbol"
       :interval="timeframe"
       :indicators="legendIndicators"
     />
