@@ -2,25 +2,17 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { fetchManifest, loadCsvData } from "../services/dataLoader";
 import type { DataManifest } from "../services/dataLoader";
-import type {
-  Candle,
-  Timeframe,
-  IndicatorPoint,
-  IndicatorDefinition,
-} from "../data/types";
-import { calculateSMA, appendSMA } from "../utils/indicators";
+import type { Candle, Timeframe, IndicatorPoint } from "../data/types";
 import { useTradingStore } from "./tradingStore";
+import { INDICATOR_DEFINITIONS } from "../indicators/definitions";
+import { createIndicatorInstance } from "../indicators/factory";
+import type { IndicatorStrategy } from "../indicators/types";
 
 const AVAILABLE_TIMEFRAMES: Timeframe[] = ["15m", "1h"];
 const TIMEFRAME_STEP_SECONDS: Record<string, number> = {
   "15m": 60 * 15,
   "1h": 60 * 60,
 };
-const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
-  { id: "sma14", label: "SMA 14", type: "sma", period: 14, color: "#f0b90b" },
-  { id: "sma50", label: "SMA 50", type: "sma", period: 50, color: "#1abc9c" },
-];
-
 type IndicatorState = Record<string, boolean>;
 
 const defaultIndicatorState: IndicatorState = INDICATOR_DEFINITIONS.reduce(
@@ -42,6 +34,9 @@ export const useReplayStore = defineStore("replay", () => {
   >({});
   const dataManifest = ref<DataManifest | null>(null);
   const activeSymbol = ref<string>("ETHUSDT");
+  const indicatorInstances = ref<
+    Record<string, Record<string, IndicatorStrategy>>
+  >({});
 
   const isPlaying = ref(false);
   const isSelectingReplay = ref(false);
@@ -110,6 +105,8 @@ export const useReplayStore = defineStore("replay", () => {
     );
 
     datasets.value = loaded;
+    syncIndicatorInstancesWithState();
+    resetIndicatorInstances();
 
     const activeData = loaded[activeTimeframe.value] || [];
     const lastCandle = activeData[activeData.length - 1];
@@ -136,6 +133,7 @@ export const useReplayStore = defineStore("replay", () => {
     datasets.value = {};
     visibleDatasets.value = {};
     visibleIndicators.value = {};
+    resetIndicatorInstances();
     tradingStore.resetSession();
     await loadData();
   }
@@ -171,15 +169,60 @@ export const useReplayStore = defineStore("replay", () => {
       newVisible[key] = filtered;
 
       newIndicators[key] = computeIndicatorsForVisible(
+        key,
         filtered,
         visibleDatasets.value[key] || [],
-        visibleIndicators.value[key] || {},
-        activeIndicators.value
+        visibleIndicators.value[key] || {}
       );
     }
 
     visibleDatasets.value = newVisible;
     visibleIndicators.value = newIndicators;
+  }
+
+  function computeIndicatorsForVisible(
+    timeframe: string,
+    visibleCandles: Candle[],
+    previousVisible: Candle[],
+    previousIndicators: Record<string, IndicatorPoint[]>
+  ): Record<string, IndicatorPoint[]> {
+    const result: Record<string, IndicatorPoint[]> = {};
+    const instances = indicatorInstances.value[timeframe] || {};
+
+    const prevLength = previousVisible?.length ?? 0;
+    const newLength = visibleCandles.length;
+    const hasNewCandle = newLength > prevLength;
+    const isReset = newLength < prevLength;
+    const isJump = newLength - prevLength > 1;
+
+    for (const [id, instance] of Object.entries(instances)) {
+      if (newLength === 0) {
+        instance.reset();
+        result[id] = [];
+        continue;
+      }
+
+      const prevSeries = previousIndicators?.[id] || [];
+
+      if (isReset || isJump || prevSeries.length === 0) {
+        instance.reset();
+        result[id] = instance.calculate(visibleCandles);
+        continue;
+      }
+
+      if (hasNewCandle) {
+        const latest = visibleCandles[newLength - 1];
+        if (latest) {
+          instance.update(latest);
+        }
+        result[id] = instance.getSeries();
+        continue;
+      }
+
+      result[id] = instance.getSeries();
+    }
+
+    return result;
   }
 
   function jumpTo(index: number) {
@@ -216,6 +259,7 @@ export const useReplayStore = defineStore("replay", () => {
   function toggleIndicator(id: string) {
     if (!(id in activeIndicators.value)) return;
     activeIndicators.value[id] = !activeIndicators.value[id];
+    syncIndicatorInstancesWithState();
     updateView();
   }
 
@@ -275,6 +319,33 @@ export const useReplayStore = defineStore("replay", () => {
     INDICATOR_DEFINITIONS.filter((def) => activeIndicators.value[def.id])
   );
 
+  function syncIndicatorInstancesWithState() {
+    for (const timeframe of AVAILABLE_TIMEFRAMES) {
+      if (!indicatorInstances.value[timeframe]) {
+        indicatorInstances.value[timeframe] = {};
+      }
+      const instanceMap = indicatorInstances.value[timeframe];
+
+      for (const definition of INDICATOR_DEFINITIONS) {
+        const isActive = !!activeIndicators.value[definition.id];
+        if (isActive && !instanceMap[definition.id]) {
+          instanceMap[definition.id] = createIndicatorInstance(definition);
+        } else if (!isActive && instanceMap[definition.id]) {
+          delete instanceMap[definition.id];
+        }
+      }
+    }
+  }
+
+  function resetIndicatorInstances() {
+    for (const timeframeInstances of Object.values(indicatorInstances.value)) {
+      for (const instance of Object.values(timeframeInstances)) {
+        instance.reset();
+      }
+    }
+  }
+  syncIndicatorInstancesWithState();
+
   return {
     availableTimeframes: AVAILABLE_TIMEFRAMES,
     indicatorDefinitions: INDICATOR_DEFINITIONS,
@@ -305,52 +376,6 @@ export const useReplayStore = defineStore("replay", () => {
     setPlaybackInterval,
   };
 });
-
-function computeIndicatorsForVisible(
-  visibleCandles: Candle[],
-  previousVisible: Candle[],
-  previousIndicators: Record<string, IndicatorPoint[]>,
-  activeIndicatorState: IndicatorState
-): Record<string, IndicatorPoint[]> {
-  const result: Record<string, IndicatorPoint[]> = {};
-
-  const prevLength = previousVisible?.length ?? 0;
-  const newLength = visibleCandles.length;
-  const hasNewCandle = newLength > prevLength;
-  const isReset = newLength < prevLength;
-  const isJump = newLength - prevLength > 1;
-
-  for (const definition of INDICATOR_DEFINITIONS) {
-    if (!activeIndicatorState[definition.id]) {
-      result[definition.id] = [];
-      continue;
-    }
-
-    const period = definition.period ?? 0;
-    if (period <= 0 || newLength < period) {
-      result[definition.id] = [];
-      continue;
-    }
-
-    const prevSeries = previousIndicators?.[definition.id] || [];
-
-    if (definition.type === "sma") {
-      if (isReset || isJump || prevSeries.length === 0) {
-        result[definition.id] = calculateSMA(visibleCandles, period);
-        continue;
-      }
-
-      if (!hasNewCandle) {
-        result[definition.id] = prevSeries.slice();
-        continue;
-      }
-
-      result[definition.id] = appendSMA(prevSeries, visibleCandles, period);
-    }
-  }
-
-  return result;
-}
 
 function findVisibleEndIndex(data: Candle[], targetTime: number) {
   let left = 0;

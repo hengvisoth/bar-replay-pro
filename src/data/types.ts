@@ -12,6 +12,7 @@ export interface IndicatorPoint {
 }
 
 export type IndicatorType = "sma";
+export type CandleSource = "open" | "high" | "low" | "close";
 
 export interface IndicatorDefinition {
   id: string;
@@ -20,6 +21,7 @@ export interface IndicatorDefinition {
   period?: number;
   color: string;
   lineWidth?: number;
+  source?: CandleSource;
 }
 
 // We use this type to identify which timeframe we are loading
