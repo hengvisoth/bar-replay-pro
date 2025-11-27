@@ -59,18 +59,34 @@ function parseBinanceCsv(csvText: string): Candle[] {
       ...string[]
     ];
 
-    const time = Math.floor(parseFloat(openTime) / 1000) as UTCTimestamp;
-    const open = parseFloat(openStr ?? "0");
-    const high = parseFloat(highStr ?? "0");
-    const low = parseFloat(lowStr ?? "0");
-    const close = parseFloat(closeStr ?? "0");
-    const volume = parseFloat(volumeStr ?? "0");
+    const timeMs = parseNumber(openTime);
+    const open = parseNumber(openStr);
+    const high = parseNumber(highStr);
+    const low = parseNumber(lowStr);
+    const close = parseNumber(closeStr);
+    const volume = parseNumber(volumeStr);
 
-    // Safety check: ensure valid numbers
-    if (isNaN(time) || isNaN(open)) continue;
+    if (!Number.isFinite(timeMs) || !Number.isFinite(open)) {
+      continue;
+    }
 
-    candles.push({ time, open, high, low, close, volume });
+    candles.push({
+      time: Math.floor((timeMs as number) / 1000) as UTCTimestamp,
+      open,
+      high: Number.isFinite(high) ? (high as number) : open,
+      low: Number.isFinite(low) ? (low as number) : open,
+      close: Number.isFinite(close) ? (close as number) : open,
+      volume: Number.isFinite(volume) ? (volume as number) : 0,
+    });
   }
 
   return candles;
+}
+
+function parseNumber(value?: string | null) {
+  if (value == null) return NaN;
+  const trimmed = value.trim();
+  if (trimmed === "") return NaN;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : NaN;
 }

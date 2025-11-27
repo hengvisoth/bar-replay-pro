@@ -5,6 +5,7 @@ import { useReplayStore } from "../stores/replayStore";
 
 const tradingStore = useTradingStore();
 const replayStore = useReplayStore();
+const PRICE_TOLERANCE = 1e-6;
 
 const orderMargin = ref(100);
 const leverageOptions = [1, 2, 3, 5, 10, 15, 20, 25];
@@ -196,10 +197,14 @@ function determineOrderType(
   referencePrice: number | null
 ): "limit" | "stop" | null {
   if (!referencePrice) return null;
-  if (side === "long") {
-    return targetPrice <= referencePrice ? "limit" : "stop";
+  const diff = targetPrice - referencePrice;
+  if (Math.abs(diff) <= PRICE_TOLERANCE) {
+    return "limit";
   }
-  return targetPrice >= referencePrice ? "limit" : "stop";
+  if (side === "long") {
+    return diff < 0 ? "limit" : "stop";
+  }
+  return diff > 0 ? "limit" : "stop";
 }
 
 function placePendingOrder(side: "long" | "short") {

@@ -185,8 +185,7 @@ watch(
 
     // Update legend if we are not hovering
     updateLegendToLatest();
-  },
-  { deep: true }
+  }
 );
 
 watch(
@@ -230,24 +229,21 @@ watch(
     }
     updateIndicatorLegendValues();
     updateTradeMarkers();
-  },
-  { deep: true }
+  }
 );
 
 watch(
   () => tradingStore.tradeMarkers,
   () => {
     updateTradeMarkers();
-  },
-  { deep: true }
+  }
 );
 
 watch(
   () => tradingStore.pendingOrders,
   () => {
     updatePendingOrderLines();
-  },
-  { deep: true }
+  }
 );
 
 onUnmounted(() => {

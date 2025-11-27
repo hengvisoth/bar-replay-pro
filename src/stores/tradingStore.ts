@@ -48,6 +48,7 @@ interface PendingOrder {
 const STARTING_BALANCE = 10_000;
 const MIN_LEVERAGE = 1;
 const MAX_LEVERAGE = 25;
+const EPSILON = 1e-8;
 
 export const useTradingStore = defineStore("trading", () => {
   const cashBalance = ref(STARTING_BALANCE);
@@ -82,7 +83,7 @@ export const useTradingStore = defineStore("trading", () => {
     }
 
     const margin = calculateMargin(remaining, price);
-    if (cashBalance.value + 1e-8 < margin) {
+    if (cashBalance.value + EPSILON < margin) {
       return executed;
     }
 
@@ -119,7 +120,7 @@ export const useTradingStore = defineStore("trading", () => {
     }
 
     const margin = calculateMargin(remaining, price);
-    if (cashBalance.value + 1e-8 < margin) {
+    if (cashBalance.value + EPSILON < margin) {
       return executed;
     }
 
@@ -239,7 +240,7 @@ export const useTradingStore = defineStore("trading", () => {
       }
 
       const remainingSize = position.size - closeAmount;
-      if (remainingSize > 1e-8) {
+      if (remainingSize > EPSILON) {
         updatedPositions.push({
           ...position,
           size: remainingSize,
@@ -330,15 +331,45 @@ export const useTradingStore = defineStore("trading", () => {
     }
   }
 
+  function getGapAdjustedPrice(order: PendingOrder, candle: Candle) {
+    const { orderType, price, side } = order;
+    const open = candle.open;
+
+    if (orderType === "limit") {
+      if (side === "long") {
+        if (open + EPSILON < price) {
+          return open;
+        }
+      } else {
+        if (open - EPSILON > price) {
+          return open;
+        }
+      }
+    } else {
+      if (side === "long") {
+        if (open - EPSILON > price) {
+          return open;
+        }
+      } else {
+        if (open + EPSILON < price) {
+          return open;
+        }
+      }
+    }
+
+    return price;
+  }
+
   function executePendingOrder(order: PendingOrder, candle: Candle) {
+    const fillPrice = getGapAdjustedPrice(order, candle);
     if (order.side === "long") {
-      return marketBuy(order.size, order.price, candle.time, {
+      return marketBuy(order.size, fillPrice, candle.time, {
         slPrice: order.slPrice,
         tpPrice: order.tpPrice,
       });
     }
 
-    return marketSell(order.size, order.price, candle.time, {
+    return marketSell(order.size, fillPrice, candle.time, {
       slPrice: order.slPrice,
       tpPrice: order.tpPrice,
     });
@@ -346,21 +377,40 @@ export const useTradingStore = defineStore("trading", () => {
 
   function evaluateTriggers(position: Position, candle: Candle): number | null {
     const { slPrice, tpPrice, side } = position;
-    const { high, low } = candle;
+    const { high, low, open, close } = candle;
+    const isGreen = close >= open;
 
     if (side === "long") {
-      if (slPrice && low <= slPrice) {
-        return slPrice;
-      }
-      if (tpPrice && high >= tpPrice) {
-        return tpPrice;
+      if (isGreen) {
+        if (slPrice && low <= slPrice) {
+          return slPrice;
+        }
+        if (tpPrice && high >= tpPrice) {
+          return tpPrice;
+        }
+      } else {
+        if (tpPrice && high >= tpPrice) {
+          return tpPrice;
+        }
+        if (slPrice && low <= slPrice) {
+          return slPrice;
+        }
       }
     } else {
-      if (slPrice && high >= slPrice) {
-        return slPrice;
-      }
-      if (tpPrice && low <= tpPrice) {
-        return tpPrice;
+      if (isGreen) {
+        if (tpPrice && low <= tpPrice) {
+          return tpPrice;
+        }
+        if (slPrice && high >= slPrice) {
+          return slPrice;
+        }
+      } else {
+        if (slPrice && high >= slPrice) {
+          return slPrice;
+        }
+        if (tpPrice && low <= tpPrice) {
+          return tpPrice;
+        }
       }
     }
 
