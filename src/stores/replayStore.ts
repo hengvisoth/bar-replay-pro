@@ -217,9 +217,15 @@ export const useReplayStore = defineStore("replay", () => {
         }
         result[id] = instance.getSeries();
         continue;
+      } else {
+        // Handle intra-bar price updates when no new candle is added
+        const latest = visibleCandles[newLength - 1];
+        if (latest) {
+          instance.update(latest);
+        }
+        result[id] = instance.getSeries();
+        continue;
       }
-
-      result[id] = instance.getSeries();
     }
 
     return result;

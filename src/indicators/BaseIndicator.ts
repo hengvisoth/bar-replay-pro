@@ -22,7 +22,12 @@ export abstract class BaseIndicator implements IndicatorStrategy {
   }
 
   update(candle: Candle): IndicatorPoint | null {
-    this.history = [...this.history, candle];
+    const lastHistory = this.history[this.history.length - 1];
+    if (lastHistory && lastHistory.time === candle.time) {
+      this.history[this.history.length - 1] = candle;
+    } else {
+      this.history.push(candle);
+    }
     const point = this.onUpdate(candle);
     if (!point) {
       return null;

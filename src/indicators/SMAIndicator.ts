@@ -1,5 +1,5 @@
 import type { IndicatorPoint, Candle } from "../data/types";
-import { appendSMA, calculateSMA } from "../utils/indicators";
+import { calculateSMA } from "../utils/indicators";
 import { BaseIndicator } from "./BaseIndicator";
 
 export class SMAIndicator extends BaseIndicator {
@@ -12,11 +12,19 @@ export class SMAIndicator extends BaseIndicator {
     return calculateSMA(history, this.period);
   }
 
-  protected onUpdate(_candle: Candle): IndicatorPoint | null {
-    if (this.history.length === 0) return null;
-    const period = this.period;
-    const series = appendSMA(this.data, this.history, period);
-    this.data = series;
-    return this.data[this.data.length - 1] ?? null;
+  protected onUpdate(candle: Candle): IndicatorPoint | null {
+    const len = this.history.length;
+    if (len < this.period) return null;
+
+    let sum = 0;
+    // Sum only the most recent N candles instead of copying arrays
+    for (let i = 0; i < this.period; i++) {
+      sum += this.getSourceValue(this.history[len - 1 - i]);
+    }
+
+    return {
+      time: candle.time,
+      value: sum / this.period,
+    };
   }
 }
