@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from "vue";
+import { ref, onMounted, onUnmounted, watch, nextTick } from "vue";
 import {
   createChart,
   type IChartApi,
@@ -20,45 +20,70 @@ import {
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
 import ChartLegend from "./ChartLegend.vue";
-import type { Candle } from "../data/types";
+import type { Candle, IndicatorDefinition } from "../data/types";
 
-// Props to make this component reusable for MTF
+const OSCILLATOR_TYPES = new Set(["atr", "rsi", "adx"]);
+const HANDLE_HEIGHT = 8;
+
 const props = defineProps<{
-  timeframe: string; // "1h" or "15m"
+  timeframe: string;
 }>();
 
-const chartContainer = ref<HTMLElement | null>(null);
 const store = useReplayStore();
 const tradingStore = useTradingStore();
 
-// Local state for the Legend
+const paneRoot = ref<HTMLElement | null>(null);
+const mainChartContainer = ref<HTMLElement | null>(null);
+const oscillatorChartContainer = ref<HTMLElement | null>(null);
+const mainPaneRatio = ref(0.7);
+const mainPaneHeight = ref(0);
+const oscillatorPaneHeight = ref(0);
+
 const hoveredCandle = ref<Candle | null>(null);
 const legendIndicators = ref<
   Array<{ label: string; value: number | null; color: string }>
 >([]);
 const savedRanges = ref<Record<string, LogicalRange | null>>({});
 
-let chart: IChartApi | null = null;
+let mainChart: IChartApi | null = null;
+let oscillatorChart: IChartApi | null = null;
 let candleSeries: ISeriesApi<"Candlestick"> | null = null;
-let indicatorSeries: Record<string, ISeriesApi<"Line">> = {};
-let unsubscribeRangeWatcher: (() => void) | null = null;
+let overlayIndicatorSeries: Record<string, ISeriesApi<"Line">> = {};
+let oscillatorIndicatorSeries: Record<string, ISeriesApi<"Line">> = {};
+let unsubscribeMainRange: (() => void) | null = null;
+let unsubscribeOscRange: (() => void) | null = null;
+let isSyncingRange = false;
 let tradeMarkersPrimitive: ISeriesMarkersPluginApi<Time> | null = null;
 let clickHandler: ((param: MouseEventParams) => void) | null = null;
 let orderPriceLines: Record<number, IPriceLine> = {};
+let isPaneResizing = false;
+let resizeStartY = 0;
+let resizeStartRatio = 0;
 
 onMounted(async () => {
-  if (!chartContainer.value) return;
+  await nextTick();
+  recomputePaneHeights();
+  if (!mainChartContainer.value || !oscillatorChartContainer.value) return;
 
-  chart = createChart(chartContainer.value, {
+  mainChart = createChart(mainChartContainer.value, {
     layout: { background: { color: "#10141f" }, textColor: "#d1d4dc" },
     grid: { vertLines: { color: "#1f2937" }, horzLines: { color: "#1f2937" } },
-    width: chartContainer.value.clientWidth,
-    height: chartContainer.value.clientHeight,
+    width: mainChartContainer.value.clientWidth,
+    height: mainChartContainer.value.clientHeight,
     timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 5 },
-    crosshair: { mode: 1 }, // Magnet mode
+    crosshair: { mode: 1 },
   });
 
-  candleSeries = chart.addSeries(CandlestickSeries, {
+  oscillatorChart = createChart(oscillatorChartContainer.value, {
+    layout: { background: { color: "#0d111d" }, textColor: "#d1d4dc" },
+    grid: { vertLines: { color: "#1f2937" }, horzLines: { color: "#1f2937" } },
+    width: oscillatorChartContainer.value.clientWidth,
+    height: oscillatorChartContainer.value.clientHeight,
+    timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 5 },
+    crosshair: { mode: 1 },
+  });
+
+  candleSeries = mainChart.addSeries(CandlestickSeries, {
     upColor: "#26a69a",
     downColor: "#ef5350",
     borderVisible: false,
@@ -67,13 +92,21 @@ onMounted(async () => {
   });
   tradeMarkersPrimitive = createSeriesMarkers(candleSeries, []);
 
-  indicatorSeries = {};
+  overlayIndicatorSeries = {};
+  oscillatorIndicatorSeries = {};
   for (const indicator of store.indicatorDefinitions) {
-    indicatorSeries[indicator.id] = chart.addSeries(LineSeries, {
+    const targetChart = isOscillator(indicator) ? oscillatorChart : mainChart;
+    if (!targetChart) continue;
+    const series = targetChart.addSeries(LineSeries, {
       color: indicator.color,
       lineWidth: (indicator.lineWidth ?? 2) as LineWidth,
       crosshairMarkerVisible: false,
     });
+    if (isOscillator(indicator)) {
+      oscillatorIndicatorSeries[indicator.id] = series;
+    } else {
+      overlayIndicatorSeries[indicator.id] = series;
+    }
   }
 
   clickHandler = (param: MouseEventParams) => {
@@ -82,18 +115,13 @@ onMounted(async () => {
       store.setReplayStart(param.time);
     }
   };
-  chart.subscribeClick(clickHandler);
+  mainChart.subscribeClick(clickHandler);
 
-  // --- LEGEND LOGIC ---
-  // Subscribe to crosshair moves to update Legend
-  chart.subscribeCrosshairMove((param: MouseEventParams) => {
+  mainChart.subscribeCrosshairMove((param: MouseEventParams) => {
     if (!param.time || !candleSeries) {
-      // If mouse leaves chart, revert to latest candle
       updateLegendToLatest();
       return;
     }
-
-    // Get data for the hovered position
     const data = param.seriesData.get(
       candleSeries
     ) as SeriesDataItemTypeMap["Candlestick"] | undefined;
@@ -102,7 +130,6 @@ onMounted(async () => {
     }
   });
 
-  // Initial Load
   if (Object.keys(store.datasets).length === 0) {
     await store.loadData();
   }
@@ -111,16 +138,84 @@ onMounted(async () => {
   initIndicatorData();
   updateTradeMarkers();
   updatePendingOrderLines();
-  const timeScale = chart.timeScale();
-  const handleRangeChange = (range: LogicalRange | null) => {
-    if (!range) return;
+
+  const mainTimeScale = mainChart.timeScale();
+  const oscillatorTimeScale = oscillatorChart.timeScale();
+  const handleMainRangeChange = (range: LogicalRange | null) => {
+    if (!range || isSyncingRange) return;
     savedRanges.value[props.timeframe] = { ...range };
+    setOscillatorRange(range);
   };
-  timeScale.subscribeVisibleLogicalRangeChange(handleRangeChange);
-  unsubscribeRangeWatcher = () =>
-    timeScale.unsubscribeVisibleLogicalRangeChange(handleRangeChange);
+  const handleOscillatorRangeChange = (range: LogicalRange | null) => {
+    if (!range || isSyncingRange) return;
+    savedRanges.value[props.timeframe] = { ...range };
+    setMainRange(range);
+  };
+  mainTimeScale.subscribeVisibleLogicalRangeChange(handleMainRangeChange);
+  oscillatorTimeScale.subscribeVisibleLogicalRangeChange(handleOscillatorRangeChange);
+  unsubscribeMainRange = () =>
+    mainTimeScale.unsubscribeVisibleLogicalRangeChange(handleMainRangeChange);
+  unsubscribeOscRange = () =>
+    oscillatorTimeScale.unsubscribeVisibleLogicalRangeChange(
+      handleOscillatorRangeChange
+    );
+
   window.addEventListener("resize", handleResize);
 });
+
+function isOscillator(definition: IndicatorDefinition) {
+  return OSCILLATOR_TYPES.has(definition.type);
+}
+
+function setMainRange(range: LogicalRange) {
+  if (!mainChart) return;
+  isSyncingRange = true;
+  mainChart.timeScale().setVisibleLogicalRange(range);
+  isSyncingRange = false;
+}
+
+function setOscillatorRange(range: LogicalRange) {
+  if (!oscillatorChart) return;
+  isSyncingRange = true;
+  oscillatorChart.timeScale().setVisibleLogicalRange(range);
+  isSyncingRange = false;
+}
+
+function recomputePaneHeights() {
+  if (!paneRoot.value) return;
+  const totalHeight = paneRoot.value.clientHeight;
+  const chartSpace = Math.max(totalHeight - HANDLE_HEIGHT, 0);
+  mainPaneHeight.value = chartSpace * mainPaneRatio.value;
+  oscillatorPaneHeight.value = chartSpace * (1 - mainPaneRatio.value);
+}
+
+function beginPaneResize(event: MouseEvent) {
+  if (!paneRoot.value) return;
+  isPaneResizing = true;
+  resizeStartY = event.clientY;
+  resizeStartRatio = mainPaneRatio.value;
+  document.addEventListener("mousemove", handlePaneResizeMove);
+  document.addEventListener("mouseup", endPaneResize);
+  event.preventDefault();
+}
+
+function handlePaneResizeMove(event: MouseEvent) {
+  if (!isPaneResizing || !paneRoot.value) return;
+  const usableHeight = Math.max(paneRoot.value.clientHeight - HANDLE_HEIGHT, 0);
+  if (usableHeight <= 0) return;
+  const deltaRatio = (event.clientY - resizeStartY) / usableHeight;
+  const nextRatio = Math.min(0.9, Math.max(0.2, resizeStartRatio + deltaRatio));
+  mainPaneRatio.value = nextRatio;
+  recomputePaneHeights();
+  resizeCharts();
+}
+
+function endPaneResize() {
+  if (!isPaneResizing) return;
+  isPaneResizing = false;
+  document.removeEventListener("mousemove", handlePaneResizeMove);
+  document.removeEventListener("mouseup", endPaneResize);
+}
 
 function updateLegendToLatest() {
   const data = store.visibleDatasets[props.timeframe];
@@ -140,35 +235,45 @@ function initChartData() {
 }
 
 function initIndicatorData() {
-  if (!chart) return;
   const indicatorMap = store.visibleIndicators[props.timeframe] || {};
   for (const indicator of store.indicatorDefinitions) {
-    const series = indicatorSeries[indicator.id];
+    const series = getSeriesForIndicator(indicator);
     if (!series) continue;
     series.setData(indicatorMap[indicator.id] || []);
   }
   updateIndicatorLegendValues();
 }
 
+function getSeriesForIndicator(indicator: IndicatorDefinition) {
+  return isOscillator(indicator)
+    ? oscillatorIndicatorSeries[indicator.id]
+    : overlayIndicatorSeries[indicator.id];
+}
+
 function saveCurrentRange(timeframe: string) {
-  if (!chart) return;
-  const range = chart.timeScale().getVisibleLogicalRange();
+  if (!mainChart) return;
+  const range = mainChart.timeScale().getVisibleLogicalRange();
   if (range) {
     savedRanges.value[timeframe] = { ...range };
   }
 }
 
 function applySavedRangeOrFit() {
-  if (!chart) return;
+  if (!mainChart) return;
   const range = savedRanges.value[props.timeframe];
   if (range) {
-    chart.timeScale().setVisibleLogicalRange(range);
+    setMainRange(range);
+    setOscillatorRange(range);
   } else {
-    chart.timeScale().fitContent();
+    mainChart.timeScale().fitContent();
+    const fittedRange = mainChart.timeScale().getVisibleLogicalRange();
+    if (fittedRange) {
+      setOscillatorRange(fittedRange);
+      savedRanges.value[props.timeframe] = { ...fittedRange };
+    }
   }
 }
 
-// Watch the SPECIFIC timeframe dataset
 watch(
   () => store.visibleDatasets[props.timeframe],
   (newData, oldData) => {
@@ -187,7 +292,6 @@ watch(
       }
     }
 
-    // Update legend if we are not hovering
     updateLegendToLatest();
   }
 );
@@ -206,9 +310,8 @@ watch(
 watch(
   () => store.visibleIndicators[props.timeframe],
   (newIndicators, oldIndicators) => {
-    if (!chart) return;
     for (const indicator of store.indicatorDefinitions) {
-      const series = indicatorSeries[indicator.id];
+      const series = getSeriesForIndicator(indicator);
       if (!series) continue;
 
       const nextData = newIndicators?.[indicator.id] || [];
@@ -250,26 +353,56 @@ watch(
   }
 );
 
+watch(mainPaneRatio, () => {
+  if (isPaneResizing) return;
+  recomputePaneHeights();
+  resizeCharts();
+});
+
 onUnmounted(() => {
   window.removeEventListener("resize", handleResize);
-  if (unsubscribeRangeWatcher) {
-    unsubscribeRangeWatcher();
-    unsubscribeRangeWatcher = null;
+  endPaneResize();
+  if (unsubscribeMainRange) {
+    unsubscribeMainRange();
+    unsubscribeMainRange = null;
   }
-  tradeMarkersPrimitive = null;
-  if (chart && clickHandler) {
-    chart.unsubscribeClick(clickHandler);
+  if (unsubscribeOscRange) {
+    unsubscribeOscRange();
+    unsubscribeOscRange = null;
+  }
+  if (tradeMarkersPrimitive) {
+    tradeMarkersPrimitive.setMarkers([]);
+    tradeMarkersPrimitive = null;
+  }
+  if (mainChart && clickHandler) {
+    mainChart.unsubscribeClick(clickHandler);
   }
   clearPendingOrderLines();
-  if (chart) chart.remove();
+  if (mainChart) {
+    mainChart.remove();
+  }
+  if (oscillatorChart) {
+    oscillatorChart.remove();
+  }
   clickHandler = null;
 });
 
 function handleResize() {
-  if (chart && chartContainer.value) {
-    chart.applyOptions({
-      width: chartContainer.value.clientWidth,
-      height: chartContainer.value.clientHeight,
+  recomputePaneHeights();
+  resizeCharts();
+}
+
+function resizeCharts() {
+  if (mainChart && mainChartContainer.value) {
+    mainChart.applyOptions({
+      width: mainChartContainer.value.clientWidth,
+      height: mainChartContainer.value.clientHeight,
+    });
+  }
+  if (oscillatorChart && oscillatorChartContainer.value) {
+    oscillatorChart.applyOptions({
+      width: oscillatorChartContainer.value.clientWidth,
+      height: oscillatorChartContainer.value.clientHeight,
     });
   }
 }
@@ -358,6 +491,7 @@ function clearPendingOrderLines() {
 
 <template>
   <div
+    ref="paneRoot"
     class="relative w-full h-full bg-[#10141f] overflow-hidden border-r border-gray-800"
     :class="store.isSelectingReplay ? 'cursor-crosshair ring-1 ring-blue-500/50' : ''"
   >
@@ -369,7 +503,7 @@ function clearPendingOrderLines() {
         Click a candle to start replay
       </div>
     </div>
-    <!-- The Legend Overlay -->
+
     <ChartLegend
       :candle="hoveredCandle"
       :symbol="store.activeSymbol"
@@ -377,7 +511,27 @@ function clearPendingOrderLines() {
       :indicators="legendIndicators"
     />
 
-    <!-- The Chart -->
-    <div ref="chartContainer" class="w-full h-full"></div>
+    <div class="absolute inset-0 flex flex-col">
+      <div
+        class="relative w-full"
+        :style="{ height: `${mainPaneHeight}px`, minHeight: '160px' }"
+      >
+        <div ref="mainChartContainer" class="w-full h-full"></div>
+      </div>
+
+      <div
+        class="h-2 bg-gray-800/80 hover:bg-gray-700/80 text-[10px] uppercase tracking-[0.3em] text-gray-400 flex items-center justify-center cursor-row-resize select-none"
+        @mousedown="beginPaneResize"
+      >
+        Drag
+      </div>
+
+      <div
+        class="relative w-full"
+        :style="{ height: `${oscillatorPaneHeight}px`, minHeight: '120px' }"
+      >
+        <div ref="oscillatorChartContainer" class="w-full h-full"></div>
+      </div>
+    </div>
   </div>
 </template>
