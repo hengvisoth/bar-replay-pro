@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from "vue";
+import { ref, watch } from "vue";
 import ChartContainer from "./components/ChartContainer.vue";
 import ScrubBar from "./components/ScrubBar.vue";
 import TimeframeTabs from "./components/TimeframeTabs.vue";
@@ -9,6 +9,7 @@ import { useTradingStore } from "./stores/tradingStore";
 
 const store = useReplayStore();
 const tradingStore = useTradingStore();
+const colorInputs = ref<Record<string, HTMLInputElement | null>>({});
 
 watch(
   () => store.visibleDatasets[store.activeTimeframe],
@@ -20,6 +21,21 @@ watch(
   },
   { deep: true }
 );
+
+function setColorInputRef(id: string, element: HTMLInputElement | null) {
+  colorInputs.value[id] = element;
+}
+
+function openColorPicker(id: string) {
+  const input = colorInputs.value[id];
+  input?.click();
+}
+
+function handleIndicatorColorChange(id: string, event: Event) {
+  const target = event.target as HTMLInputElement | null;
+  if (!target) return;
+  store.setIndicatorColor(id, target.value);
+}
 </script>
 
 <template>
@@ -68,21 +84,41 @@ watch(
           <span class="text-[11px] uppercase tracking-[0.25em] text-gray-500"
             >Indicators</span
           >
-          <div class="flex flex-wrap gap-2">
-            <button
+          <div class="flex flex-wrap gap-2 items-center">
+            <div
               v-for="indicator in store.indicatorDefinitions"
               :key="indicator.id"
-              type="button"
-              class="px-3 py-1 text-xs font-semibold rounded border transition-colors"
-              :class="[
-                store.isIndicatorActive(indicator.id)
-                  ? 'border-blue-500 bg-blue-500/20 text-blue-100'
-                  : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100'
-              ]"
-              @click="store.toggleIndicator(indicator.id)"
+              class="flex items-center gap-1 relative"
             >
-              {{ indicator.label }}
-            </button>
+              <button
+                type="button"
+                class="px-3 py-1 text-xs font-semibold rounded border transition-colors"
+                :class="[
+                  store.isIndicatorActive(indicator.id)
+                    ? 'border-blue-500 bg-blue-500/20 text-blue-100'
+                    : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100'
+                ]"
+                @click="store.toggleIndicator(indicator.id)"
+              >
+                {{ indicator.label }}
+              </button>
+              <button
+                type="button"
+                class="w-4 h-4 rounded-full border border-gray-700 flex-shrink-0 pointer-events-auto hover:opacity-80 transition"
+                :style="{ backgroundColor: indicator.color }"
+                :title="`Edit ${indicator.label} color`"
+                @click="openColorPicker(indicator.id)"
+              ></button>
+              <input
+                type="color"
+                class="absolute opacity-0 pointer-events-none w-0 h-0"
+                :value="indicator.color"
+                :ref="(el) =>
+                  setColorInputRef(indicator.id, el as HTMLInputElement | null)
+                "
+                @input="(event) => handleIndicatorColorChange(indicator.id, event)"
+              />
+            </div>
           </div>
         </div>
       </div>

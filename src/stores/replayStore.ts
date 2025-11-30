@@ -14,16 +14,18 @@ const TIMEFRAME_STEP_SECONDS: Record<string, number> = {
   "1h": 60 * 60,
 };
 type IndicatorState = Record<string, boolean>;
+type IndicatorSettingsState = Record<string, { color?: string }>;
 
 const defaultIndicatorState: IndicatorState = INDICATOR_DEFINITIONS.reduce(
   (acc, indicator) => {
-    acc[indicator.id] = true;
+    acc[indicator.id] = indicator.defaultActive ?? true;
     return acc;
   },
   {} as IndicatorState
 );
 
 export const useReplayStore = defineStore("replay", () => {
+  const INDICATOR_STORAGE_KEY = "indicatorSettings";
   // --- STATE ---
   // We now map keys (e.g., "1h", "15m") to data arrays
   const tradingStore = useTradingStore();
@@ -37,6 +39,7 @@ export const useReplayStore = defineStore("replay", () => {
   const indicatorInstances = ref<
     Record<string, Record<string, IndicatorStrategy>>
   >({});
+  const indicatorSettings = ref<IndicatorSettingsState>({});
 
   const isPlaying = ref(false);
   const isSelectingReplay = ref(false);
@@ -322,7 +325,9 @@ export const useReplayStore = defineStore("replay", () => {
   const totalCandles = computed(() => activeDataset.value.length || 0);
 
   const activeIndicatorDefinitions = computed(() =>
-    INDICATOR_DEFINITIONS.filter((def) => activeIndicators.value[def.id])
+    decoratedIndicatorDefinitions.value.filter(
+      (def) => activeIndicators.value[def.id]
+    )
   );
 
   function syncIndicatorInstancesWithState() {
@@ -354,7 +359,9 @@ export const useReplayStore = defineStore("replay", () => {
 
   return {
     availableTimeframes: AVAILABLE_TIMEFRAMES,
-    indicatorDefinitions: INDICATOR_DEFINITIONS,
+    indicatorDefinitions: decoratedIndicatorDefinitions,
+    setIndicatorColor,
+    indicatorSettings,
     activeIndicatorDefinitions,
     activeTimeframe,
     activeIndicators,
@@ -404,3 +411,44 @@ function findVisibleEndIndex(data: Candle[], targetTime: number) {
 
   return result;
 }
+  loadIndicatorSettings();
+
+  function loadIndicatorSettings() {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = window.localStorage.getItem(INDICATOR_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as IndicatorSettingsState;
+        indicatorSettings.value = parsed ?? {};
+      }
+    } catch (error) {
+      console.warn("Failed to load indicator settings", error);
+    }
+  }
+
+  function persistIndicatorSettings() {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        INDICATOR_STORAGE_KEY,
+        JSON.stringify(indicatorSettings.value)
+      );
+    } catch (error) {
+      console.warn("Failed to persist indicator settings", error);
+    }
+  }
+
+  function setIndicatorColor(id: string, color: string) {
+    indicatorSettings.value = {
+      ...indicatorSettings.value,
+      [id]: { ...(indicatorSettings.value[id] ?? {}), color },
+    };
+    persistIndicatorSettings();
+  }
+
+  const decoratedIndicatorDefinitions = computed(() =>
+    INDICATOR_DEFINITIONS.map((definition) => ({
+      ...definition,
+      color: indicatorSettings.value[definition.id]?.color ?? definition.color,
+    }))
+  );

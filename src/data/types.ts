@@ -22,6 +22,7 @@ export interface IndicatorDefinition {
   color: string;
   lineWidth?: number;
   source?: CandleSource;
+  defaultActive?: boolean;
 }
 
 // We use this type to identify which timeframe we are loading

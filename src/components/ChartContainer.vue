@@ -259,6 +259,10 @@ function getSeriesForIndicator(indicator: IndicatorDefinition) {
     : overlayIndicatorSeries[indicator.id];
 }
 
+function getSeriesById(id: string) {
+  return overlayIndicatorSeries[id] ?? oscillatorIndicatorSeries[id];
+}
+
 function saveCurrentRange(timeframe: string) {
   if (!mainChart) return;
   const range = mainChart.timeScale().getVisibleLogicalRange();
@@ -367,6 +371,26 @@ watch(mainPaneRatio, () => {
   recomputePaneHeights();
   resizeCharts();
 });
+
+watch(
+  () =>
+    store.indicatorDefinitions.map((definition) => ({
+      id: definition.id,
+      color: definition.color,
+      lineWidth: definition.lineWidth,
+    })),
+  (updatedDefinitions) => {
+    for (const definition of updatedDefinitions) {
+      const series = getSeriesById(definition.id);
+      if (!series) continue;
+      series.applyOptions({
+        color: definition.color,
+        lineWidth: (definition.lineWidth ?? 2) as LineWidth,
+      });
+    }
+  },
+  { deep: true }
+);
 
 onUnmounted(() => {
   window.removeEventListener("resize", handleResize);
