@@ -11,7 +11,7 @@ export interface IndicatorPoint {
   value: number;
 }
 
-export type IndicatorType = "sma";
+export type IndicatorType = "sma" | "ema" | "atr" | "rsi" | "adx";
 export type CandleSource = "open" | "high" | "low" | "close";
 
 export interface IndicatorDefinition {

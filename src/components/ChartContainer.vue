@@ -12,6 +12,10 @@ import {
   createSeriesMarkers,
   LineStyle,
   type IPriceLine,
+  type ISeriesMarkersPluginApi,
+  type LineWidth,
+  type CreatePriceLineOptions,
+  type Time,
 } from "lightweight-charts";
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
@@ -38,7 +42,7 @@ let chart: IChartApi | null = null;
 let candleSeries: ISeriesApi<"Candlestick"> | null = null;
 let indicatorSeries: Record<string, ISeriesApi<"Line">> = {};
 let unsubscribeRangeWatcher: (() => void) | null = null;
-let tradeMarkersPrimitive: ReturnType<typeof createSeriesMarkers> | null = null;
+let tradeMarkersPrimitive: ISeriesMarkersPluginApi<Time> | null = null;
 let clickHandler: ((param: MouseEventParams) => void) | null = null;
 let orderPriceLines: Record<number, IPriceLine> = {};
 
@@ -67,7 +71,7 @@ onMounted(async () => {
   for (const indicator of store.indicatorDefinitions) {
     indicatorSeries[indicator.id] = chart.addSeries(LineSeries, {
       color: indicator.color,
-      lineWidth: indicator.lineWidth ?? 2,
+      lineWidth: (indicator.lineWidth ?? 2) as LineWidth,
       crosshairMarkerVisible: false,
     });
   }
@@ -190,7 +194,7 @@ watch(
 
 watch(
   () => props.timeframe,
-  (newTf, oldTf) => {
+  (_newTf, oldTf) => {
     if (oldTf) {
       saveCurrentRange(oldTf);
     }
@@ -312,11 +316,11 @@ function updatePendingOrderLines() {
   for (const order of activeOrders) {
     const color = order.side === "long" ? "#26a69a" : "#ef5350";
     const label = `${order.side === "long" ? "Buy" : "Sell"} ${order.orderType.toUpperCase()}`;
-    const lineOptions = {
+    const lineOptions: CreatePriceLineOptions = {
       price: order.price,
       color,
       lineStyle: LineStyle.Dashed,
-      lineWidth: 1,
+      lineWidth: 1 as LineWidth,
       axisLabelVisible: true,
       title: label,
     };

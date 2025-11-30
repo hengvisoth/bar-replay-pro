@@ -10,15 +10,22 @@ export function calculateSMA(
   let rollingSum = 0;
 
   for (let i = 0; i < candles.length; i++) {
-    rollingSum += candles[i].close;
+    const candle = candles[i];
+    if (!candle) {
+      continue;
+    }
+    rollingSum += candle.close;
 
     if (i >= period) {
-      rollingSum -= candles[i - period].close;
+      const prev = candles[i - period];
+      if (prev) {
+        rollingSum -= prev.close;
+      }
     }
 
     if (i >= period - 1) {
       result.push({
-        time: candles[i].time,
+        time: candle.time,
         value: rollingSum / period,
       });
     }
@@ -41,7 +48,11 @@ export function appendSMA(
 
   let windowSum = 0;
   for (let i = candles.length - period; i < candles.length; i++) {
-    windowSum += candles[i].close;
+    const candle = candles[i];
+    if (!candle) {
+      continue;
+    }
+    windowSum += candle.close;
   }
 
   const nextPoint: IndicatorPoint = {

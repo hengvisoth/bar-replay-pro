@@ -19,7 +19,11 @@ export class SMAIndicator extends BaseIndicator {
     let sum = 0;
     // Sum only the most recent N candles instead of copying arrays
     for (let i = 0; i < this.period; i++) {
-      sum += this.getSourceValue(this.history[len - 1 - i]);
+      const candle = this.history[len - 1 - i];
+      if (!candle) {
+        return null;
+      }
+      sum += this.getSourceValue(candle);
     }
 
     return {

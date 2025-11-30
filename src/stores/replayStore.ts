@@ -390,7 +390,11 @@ function findVisibleEndIndex(data: Candle[], targetTime: number) {
 
   while (left <= right) {
     const mid = Math.floor((left + right) / 2);
-    if (data[mid].time <= targetTime) {
+    const candle = data[mid];
+    if (!candle) {
+      break;
+    }
+    if (candle.time <= targetTime) {
       result = mid;
       left = mid + 1;
     } else {

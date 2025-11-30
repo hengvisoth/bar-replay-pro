@@ -4,8 +4,11 @@ import type { IndicatorStrategy } from "./types";
 export abstract class BaseIndicator implements IndicatorStrategy {
   protected data: IndicatorPoint[] = [];
   protected history: Candle[] = [];
+  protected readonly config: IndicatorDefinition;
 
-  constructor(protected readonly config: IndicatorDefinition) {}
+  constructor(config: IndicatorDefinition) {
+    this.config = config;
+  }
 
   get id() {
     return this.config.id;
