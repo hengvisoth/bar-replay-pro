@@ -59,6 +59,7 @@ let orderPriceLines: Record<number, IPriceLine> = {};
 let isPaneResizing = false;
 let resizeStartY = 0;
 let resizeStartRatio = 0;
+let paneResizeObserver: ResizeObserver | null = null;
 
 onMounted(async () => {
   await nextTick();
@@ -159,6 +160,14 @@ onMounted(async () => {
     oscillatorTimeScale.unsubscribeVisibleLogicalRangeChange(
       handleOscillatorRangeChange
     );
+
+  paneResizeObserver = new ResizeObserver(() => {
+    recomputePaneHeights();
+    resizeCharts();
+  });
+  if (paneRoot.value && paneResizeObserver) {
+    paneResizeObserver.observe(paneRoot.value);
+  }
 
   window.addEventListener("resize", handleResize);
 });
@@ -362,6 +371,11 @@ watch(mainPaneRatio, () => {
 onUnmounted(() => {
   window.removeEventListener("resize", handleResize);
   endPaneResize();
+  if (paneResizeObserver && paneRoot.value) {
+    paneResizeObserver.unobserve(paneRoot.value);
+    paneResizeObserver.disconnect();
+    paneResizeObserver = null;
+  }
   if (unsubscribeMainRange) {
     unsubscribeMainRange();
     unsubscribeMainRange = null;
