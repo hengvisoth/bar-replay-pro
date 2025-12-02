@@ -118,8 +118,25 @@ onMounted(async () => {
   };
   mainChart.subscribeClick(clickHandler);
 
+  const handleHoverAtTime = (time: Time | null | undefined) => {
+    const numericTime = typeof time === "number" ? time : null;
+    if (numericTime == null) {
+      updateLegendToLatest();
+      return;
+    }
+    const dataset = store.visibleDatasets[props.timeframe] || [];
+    const matched = dataset.find((candle) => candle.time === numericTime);
+    if (matched) {
+      hoveredCandle.value = matched;
+    }
+    updateIndicatorLegendValues(numericTime);
+  };
+
   mainChart.subscribeCrosshairMove((param: MouseEventParams) => {
-    if (!param.time || !candleSeries) {
+    if (!candleSeries) {
+      return;
+    }
+    if (!param.time) {
       updateLegendToLatest();
       return;
     }
@@ -128,7 +145,24 @@ onMounted(async () => {
     ) as SeriesDataItemTypeMap["Candlestick"] | undefined;
     if (data) {
       hoveredCandle.value = { ...data } as Candle;
+    } else {
+      const dataset = store.visibleDatasets[props.timeframe] || [];
+      if (typeof param.time === "number") {
+        const fallback = dataset.find((candle) => candle.time === param.time);
+        if (fallback) {
+          hoveredCandle.value = fallback;
+        }
+      }
     }
+    handleHoverAtTime(param.time);
+  });
+
+  oscillatorChart.subscribeCrosshairMove((param: MouseEventParams) => {
+    if (!param.time) {
+      updateLegendToLatest();
+      return;
+    }
+    handleHoverAtTime(param.time);
   });
 
   if (Object.keys(store.datasets).length === 0) {
