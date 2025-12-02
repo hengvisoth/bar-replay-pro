@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { useReplayStore } from "../stores/replayStore";
 
 const store = useReplayStore();
@@ -18,6 +19,23 @@ function onInput(e: Event) {
 
 function setSpeed(interval: number) {
   store.setPlaybackInterval(interval);
+}
+
+function formatDateInput(timestamp: number) {
+  if (!timestamp) return "";
+  const date = new Date(timestamp * 1000);
+  const iso = date.toISOString();
+  return iso.substring(0, 16);
+}
+
+const dateInputValue = computed(() => formatDateInput(store.currentReplayTime));
+
+function onDateChange(event: Event) {
+  const value = (event.target as HTMLInputElement).value;
+  if (!value) return;
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return;
+  store.jumpToTimestamp(Math.floor(parsed / 1000));
 }
 </script>
 
@@ -63,15 +81,30 @@ function setSpeed(interval: number) {
       </div>
     </div>
 
-    <div
-      class="flex flex-col items-end w-40 shrink-0 border-l border-gray-700 pl-4"
-    >
-      <span class="text-[10px] text-gray-500 uppercase font-bold tracking-wider"
-        >Current Time</span
-      >
-      <span class="text-sm font-mono text-gray-200 truncate">
-        {{ store.currentDate || "Loading..." }}
-      </span>
+    <div class="flex items-center gap-4 border-l border-gray-700 pl-4">
+      <div class="flex flex-col items-start">
+        <span
+          class="text-[10px] text-gray-500 uppercase font-bold tracking-wider"
+          >Replay Time</span
+        >
+        <span class="text-sm font-mono text-gray-200 truncate">
+          {{ store.currentDate || "Loading..." }}
+        </span>
+      </div>
+      <div class="flex flex-col items-start">
+        <label
+          class="text-[10px] text-gray-500 uppercase font-bold tracking-wider"
+          for="replay-date-input"
+          >Jump To</label
+        >
+        <input
+          id="replay-date-input"
+          type="datetime-local"
+          :value="dateInputValue"
+          @change="onDateChange"
+          class="bg-[#0f172a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-100 focus:outline-none focus:border-blue-500"
+        />
+      </div>
     </div>
   </div>
 </template>
