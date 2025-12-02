@@ -23,6 +23,8 @@ interface ClosedTrade extends Position {
   exitPrice: number;
   exitTime: UTCTimestamp;
   pnl: number;
+  durationSeconds: number;
+  riskReward: number | null;
 }
 
 interface TradeMarker {
@@ -45,7 +47,7 @@ interface PendingOrder {
   tpPrice: number | null;
 }
 
-const STARTING_BALANCE = 10_000;
+const STARTING_BALANCE = 100;
 const MIN_LEVERAGE = 1;
 const MAX_LEVERAGE = 25;
 const EPSILON = 1e-8;
@@ -75,7 +77,12 @@ export const useTradingStore = defineStore("trading", () => {
     if (size <= 0 || price <= 0) return false;
     const tradeTime = time as UTCTimestamp;
 
-    const { remaining, closed } = closePositions("short", size, price, tradeTime);
+    const { remaining, closed } = closePositions(
+      "short",
+      size,
+      price,
+      tradeTime
+    );
     let executed = closed > 0;
 
     if (remaining <= 0) {
@@ -112,7 +119,12 @@ export const useTradingStore = defineStore("trading", () => {
     if (size <= 0 || price <= 0) return false;
     const tradeTime = time as UTCTimestamp;
 
-    const { remaining, closed } = closePositions("long", size, price, tradeTime);
+    const { remaining, closed } = closePositions(
+      "long",
+      size,
+      price,
+      tradeTime
+    );
     let executed = closed > 0;
 
     if (remaining <= 0) {
@@ -174,7 +186,8 @@ export const useTradingStore = defineStore("trading", () => {
         position: trade.side === "long" ? "aboveBar" : "belowBar",
         shape: trade.side === "long" ? "arrowDown" : "arrowUp",
         color: trade.side === "long" ? "#ef5350" : "#26a69a",
-        text: trade.pnl >= 0 ? `+${trade.pnl.toFixed(2)}` : trade.pnl.toFixed(2),
+        text:
+          trade.pnl >= 0 ? `+${trade.pnl.toFixed(2)}` : trade.pnl.toFixed(2),
       });
     }
 
@@ -220,6 +233,10 @@ export const useTradingStore = defineStore("trading", () => {
       const marginPortion = position.margin * (closeAmount / position.size);
       cashBalance.value += marginPortion + pnl;
 
+      const riskValue = calculateRiskValue(position, closeAmount);
+      const riskReward =
+        riskValue && riskValue > 0 ? pnl / riskValue : null;
+
       tradeHistory.value.unshift({
         id: position.id,
         size: closeAmount,
@@ -233,6 +250,8 @@ export const useTradingStore = defineStore("trading", () => {
         tpPrice: position.tpPrice,
         leverage: position.leverage,
         pnl,
+        durationSeconds: Math.max(0, (time as number) - (position.entryTime as number)),
+        riskReward,
       });
 
       if (tradeHistory.value.length > 100) {
@@ -267,13 +286,9 @@ export const useTradingStore = defineStore("trading", () => {
     const position = openPositions.value.find((pos) => pos.id === positionId);
     if (!position) return false;
 
-    closePositions(
-      position.side,
-      position.size,
-      price,
-      time as UTCTimestamp,
-      { positionId }
-    );
+    closePositions(position.side, position.size, price, time as UTCTimestamp, {
+      positionId,
+    });
     return true;
   }
 
@@ -292,9 +307,15 @@ export const useTradingStore = defineStore("trading", () => {
     for (const position of snapshot) {
       const executionPrice = evaluateTriggers(position, candle);
       if (executionPrice !== null) {
-        closePositions(position.side, position.size, executionPrice, candle.time, {
-          positionId: position.id,
-        });
+        closePositions(
+          position.side,
+          position.size,
+          executionPrice,
+          candle.time,
+          {
+            positionId: position.id,
+          }
+        );
       }
     }
   }
@@ -422,6 +443,18 @@ export const useTradingStore = defineStore("trading", () => {
     return (size * price) / leverage.value;
   }
 
+  function calculateRiskValue(position: Position, portionSize: number) {
+    if (!position.slPrice || portionSize <= 0) {
+      return null;
+    }
+    const diff =
+      position.side === "long"
+        ? position.entryPrice - position.slPrice
+        : position.slPrice - position.entryPrice;
+    if (diff <= 0) return null;
+    return diff * portionSize;
+  }
+
   function getMarginRequirement(size: number, price: number) {
     return calculateMargin(size, price);
   }
@@ -464,7 +497,9 @@ export const useTradingStore = defineStore("trading", () => {
   }
 
   function cancelOrder(orderId: number) {
-    pendingOrders.value = pendingOrders.value.filter((order) => order.id !== orderId);
+    pendingOrders.value = pendingOrders.value.filter(
+      (order) => order.id !== orderId
+    );
   }
 
   function resetSession() {

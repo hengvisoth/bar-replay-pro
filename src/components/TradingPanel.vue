@@ -207,6 +207,30 @@ function determineOrderType(
   return diff > 0 ? "limit" : "stop";
 }
 
+function formatDuration(seconds?: number) {
+  if (!seconds || seconds <= 0) return "-";
+  const days = Math.floor(seconds / (24 * 3600));
+  if (days > 0) {
+    return `${days} day${days === 1 ? "" : "s"}`;
+  }
+  const hours = Math.floor(seconds / 3600);
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+  return `${Math.floor(seconds)}s`;
+}
+
+function formatRiskReward(value?: number | null) {
+  if (value == null || Number.isNaN(value)) {
+    return "--";
+  }
+  return value.toFixed(2);
+}
+
 function placePendingOrder(side: "long" | "short") {
   if (
     !canTrade.value ||
@@ -587,8 +611,15 @@ watch(orderMode, (mode) => {
                 {{ formatSigned(trade.pnl) }}
               </span>
             </div>
+            <div class="flex justify-between">
+              <span>R:R</span>
+              <span>{{ formatRiskReward(trade.riskReward) }}</span>
+            </div>
             <div class="text-xs text-gray-500 mt-1">
-              {{ formatTimestamp(trade.exitTime) }}
+              <span>Closed: {{ formatTimestamp(trade.exitTime) }}</span>
+              <span class="ml-2 text-gray-400"
+                >Duration: {{ formatDuration(trade.durationSeconds) }}</span
+              >
             </div>
           </div>
         </div>
