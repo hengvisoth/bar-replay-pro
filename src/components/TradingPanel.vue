@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import { useTradingStore } from "../stores/tradingStore";
 import { useReplayStore } from "../stores/replayStore";
 
 const tradingStore = useTradingStore();
 const replayStore = useReplayStore();
+const { isAutoTrading } = storeToRefs(replayStore);
 const PRICE_TOLERANCE = 1e-6;
 
 const orderMargin = ref(100);
@@ -27,6 +29,10 @@ const unrealizedPnL = computed(() =>
 );
 
 const equity = computed(() => tradingStore.getEquity(currentPrice.value));
+
+const autoTradingStatus = computed(() =>
+  isAutoTrading.value ? "Auto Trading: On" : "Auto Trading: Off"
+);
 
 const canTrade = computed(() => !!currentPrice.value && !!currentTime.value);
 
@@ -169,6 +175,10 @@ function handleCloseAll() {
 function handleClosePosition(positionId: number) {
   if (!currentPrice.value || !currentTime.value) return;
   tradingStore.closePosition(positionId, currentPrice.value, currentTime.value);
+}
+
+function toggleAutoTrading() {
+  replayStore.setAutoTrading(!isAutoTrading.value);
 }
 
 function handleLeverageChange(event: Event) {
@@ -314,6 +324,27 @@ watch(orderMode, (mode) => {
         <span :style="{ color: pnlColor(unrealizedPnL) }">
           {{ formatSigned(unrealizedPnL) }}
         </span>
+      </div>
+      <div class="flex items-center justify-between pt-1">
+        <div class="flex flex-col">
+          <span class="text-xs uppercase tracking-widest text-gray-400"
+            >Golden Trend</span
+          >
+          <span class="text-sm" :class="isAutoTrading ? 'text-green-400' : 'text-gray-400'">
+            {{ autoTradingStatus }}
+          </span>
+        </div>
+        <button
+          class="px-3 py-1.5 rounded text-xs font-semibold border"
+          :class="
+            isAutoTrading
+              ? 'border-green-500 text-green-100 hover:border-green-400'
+              : 'border-gray-600 text-gray-200 hover:border-blue-500'
+          "
+          @click="toggleAutoTrading"
+        >
+          {{ isAutoTrading ? 'Stop Bot' : 'Start Bot' }}
+        </button>
       </div>
       <div class="pt-2 flex items-center gap-2">
         <input

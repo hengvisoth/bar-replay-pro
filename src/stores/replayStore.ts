@@ -2,11 +2,20 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { fetchManifest, loadCsvData } from "../services/dataLoader";
 import type { DataManifest } from "../services/dataLoader";
-import type { Candle, Timeframe, IndicatorPoint } from "../data/types";
+import type {
+  Candle,
+  Timeframe,
+  IndicatorPoint,
+} from "../data/types";
+import type { UTCTimestamp } from "lightweight-charts";
 import { useTradingStore } from "./tradingStore";
 import { INDICATOR_DEFINITIONS } from "../indicators/definitions";
 import { createIndicatorInstance } from "../indicators/factory";
 import type { IndicatorStrategy } from "../indicators/types";
+import {
+  GoldenTrendStrategy,
+  type PatternType,
+} from "../strategies/GoldenTrendStrategy";
 
 const AVAILABLE_TIMEFRAMES: Timeframe[] = ["15m", "1h"];
 const TIMEFRAME_STEP_SECONDS: Record<string, number> = {
@@ -15,6 +24,13 @@ const TIMEFRAME_STEP_SECONDS: Record<string, number> = {
 };
 type IndicatorState = Record<string, boolean>;
 type IndicatorSettingsState = Record<string, { color?: string }>;
+type PatternMarker = {
+  time: UTCTimestamp;
+  position: "aboveBar" | "belowBar";
+  shape: "circle" | "square" | "arrowUp" | "arrowDown";
+  color: string;
+  text: string;
+};
 const INDICATOR_STORAGE_KEY = "indicatorSettings";
 
 const defaultIndicatorState: IndicatorState = INDICATOR_DEFINITIONS.reduce(
@@ -34,6 +50,9 @@ export const useReplayStore = defineStore("replay", () => {
   const visibleIndicators = ref<
     Record<string, Record<string, IndicatorPoint[]>>
   >({});
+  const isAutoTrading = ref(false);
+  const lastProcessedTimeByTf = ref<Record<string, number | null>>({});
+  const patternMarkers = ref<Record<string, PatternMarker[]>>({});
   const dataManifest = ref<DataManifest | null>(null);
   const activeSymbol = ref<string>("ETHUSDT");
   const indicatorInstances = ref<
@@ -87,6 +106,7 @@ export const useReplayStore = defineStore("replay", () => {
   const playbackSpeed = ref(1000);
   const activeTimeframe = ref<Timeframe>("1h");
   const activeIndicators = ref<IndicatorState>({ ...defaultIndicatorState });
+  const goldenStrategy = new GoldenTrendStrategy();
 
   // The Master Clock (Unix Timestamp)
   const currentReplayTime = ref<number>(0);
@@ -149,6 +169,7 @@ export const useReplayStore = defineStore("replay", () => {
     );
 
     datasets.value = loaded;
+    patternMarkers.value = {};
     syncIndicatorInstancesWithState();
     resetIndicatorInstances();
 
@@ -177,6 +198,7 @@ export const useReplayStore = defineStore("replay", () => {
     datasets.value = {};
     visibleDatasets.value = {};
     visibleIndicators.value = {};
+    patternMarkers.value = {};
     resetIndicatorInstances();
     tradingStore.resetSession();
     await loadData();
@@ -222,6 +244,104 @@ export const useReplayStore = defineStore("replay", () => {
 
     visibleDatasets.value = newVisible;
     visibleIndicators.value = newIndicators;
+
+    handleAutoTrading(newVisible, newIndicators);
+  }
+
+  function handleAutoTrading(
+    newVisible: Record<string, Candle[]>,
+    newIndicators: Record<string, Record<string, IndicatorPoint[]>>
+  ) {
+    if (!isAutoTrading.value) return;
+
+    const m15Data = newVisible["15m"] || [];
+    const h1Data = newVisible["1h"] || [];
+
+    if (m15Data.length < 2 || h1Data.length === 0) return;
+
+    const latestM15 = m15Data[m15Data.length - 1];
+    const lastProcessed = lastProcessedTimeByTf.value["15m"];
+    if (!latestM15) return;
+    if (lastProcessed && latestM15.time === lastProcessed) {
+      return;
+    }
+
+    const signal = goldenStrategy.checkSignals(
+      h1Data,
+      m15Data,
+      newIndicators["1h"] || {},
+      newIndicators["15m"] || {}
+    );
+
+    lastProcessedTimeByTf.value = {
+      ...lastProcessedTimeByTf.value,
+      "15m": latestM15.time,
+    };
+
+    const latestPrice = latestM15.close ?? latestM15.open;
+    if (!latestPrice) return;
+
+    if (signal.pattern) {
+      addPatternMarker("15m", latestM15, signal.pattern);
+    }
+
+    if (signal.action === "BUY") {
+      const hasOpenLong = tradingStore.openPositions.some(
+        (pos) => pos.side === "long"
+      );
+
+      if (!hasOpenLong) {
+        const availableBalance =
+          typeof tradingStore.availableBalance === "number"
+            ? tradingStore.availableBalance
+            : (tradingStore.availableBalance as unknown as { value: number })
+                .value ?? 0;
+        const leverageValue =
+          typeof tradingStore.leverage === "number"
+            ? tradingStore.leverage
+            : (tradingStore.leverage as unknown as { value: number }).value ?? 0;
+
+        const desiredMargin = availableBalance * 0.1;
+        const positionSize =
+          leverageValue && latestPrice
+            ? (desiredMargin * leverageValue) / latestPrice
+            : 0;
+
+        const size = positionSize > 0 ? positionSize : 1;
+
+        tradingStore.marketBuy(size, latestPrice, latestM15.time, {
+          slPrice: signal.stopLoss ?? undefined,
+        });
+      }
+    }
+
+    if (signal.action === "CLOSE_LONG") {
+      const openLongs = tradingStore.openPositions.filter(
+        (pos) => pos.side === "long"
+      );
+
+      for (const position of openLongs) {
+        tradingStore.closePosition(position.id, latestPrice, latestM15.time);
+      }
+    }
+  }
+
+  function addPatternMarker(timeframe: Timeframe, candle: Candle, pattern: PatternType) {
+    const text =
+      pattern === "BULLISH_ENGULFING" ? "Bull Engulf" : "Hammer";
+
+    const marker: PatternMarker = {
+      time: candle.time as UTCTimestamp,
+      position: "belowBar",
+      shape: "circle",
+      color: "#fbbf24",
+      text,
+    };
+
+    patternMarkers.value = {
+      ...patternMarkers.value,
+      [timeframe]: [...(patternMarkers.value[timeframe] ?? []), marker],
+    };
   }
 
   function computeIndicatorsForVisible(
@@ -292,12 +412,19 @@ export const useReplayStore = defineStore("replay", () => {
     let closestIndex = 0;
     while (left <= right) {
       const mid = Math.floor((left + right) / 2);
-      const midTime = active[mid].time;
+      const midTime = active[mid]?.time;
+      if (midTime == null) {
+        break;
+      }
       if (midTime === timestamp) {
         closestIndex = mid;
         break;
       }
-      if (Math.abs(midTime - timestamp) < Math.abs(active[closestIndex].time - timestamp)) {
+      const closestTime = active[closestIndex]?.time;
+      if (
+        closestTime != null &&
+        Math.abs(midTime - timestamp) < Math.abs(closestTime - timestamp)
+      ) {
         closestIndex = mid;
       }
       if (midTime < timestamp) {
@@ -306,7 +433,9 @@ export const useReplayStore = defineStore("replay", () => {
         right = mid - 1;
       }
     }
-    currentReplayTime.value = active[closestIndex].time;
+    const targetTime = active[closestIndex]?.time;
+    if (targetTime == null) return;
+    currentReplayTime.value = targetTime;
     updateView();
   }
 
@@ -330,6 +459,15 @@ export const useReplayStore = defineStore("replay", () => {
     activeTimeframe.value = tf;
     clampReplayTime();
     updateView();
+  }
+
+  function setAutoTrading(enabled: boolean) {
+    isAutoTrading.value = enabled;
+    if (enabled) {
+      lastProcessedTimeByTf.value = {};
+      patternMarkers.value = {};
+      updateView();
+    }
   }
 
   function toggleIndicator(id: string) {
@@ -437,6 +575,8 @@ export const useReplayStore = defineStore("replay", () => {
     availableSymbols,
     visibleDatasets,
     visibleIndicators,
+    patternMarkers,
+    isAutoTrading,
     isPlaying,
     isSelectingReplay,
     playbackSpeed,
@@ -452,6 +592,7 @@ export const useReplayStore = defineStore("replay", () => {
     toggleReplaySelection,
     setReplayStart,
     setActiveTimeframe,
+    setAutoTrading,
     toggleIndicator,
     isIndicatorActive,
     setPlaybackInterval,

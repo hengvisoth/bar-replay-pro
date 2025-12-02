@@ -394,6 +394,14 @@ watch(
 );
 
 watch(
+  () => store.patternMarkers[props.timeframe] || [],
+  () => {
+    updateTradeMarkers();
+  },
+  { deep: true }
+);
+
+watch(
   () => tradingStore.pendingOrders,
   () => {
     updatePendingOrderLines();
@@ -503,13 +511,16 @@ function updateIndicatorLegendValues(targetTime?: number) {
 
 function updateTradeMarkers() {
   if (!tradeMarkersPrimitive) return;
-  const markers = tradingStore.tradeMarkers.map((marker) => ({
-    time: marker.time,
-    position: marker.position,
-    shape: marker.shape,
-    color: marker.color,
-    text: marker.text,
-  }));
+  const markers = [
+    ...tradingStore.tradeMarkers.map((marker) => ({
+      time: marker.time,
+      position: marker.position,
+      shape: marker.shape,
+      color: marker.color,
+      text: marker.text,
+    })),
+    ...(store.patternMarkers[props.timeframe] || []),
+  ];
   tradeMarkersPrimitive.setMarkers(markers);
 }
 
