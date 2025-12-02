@@ -283,6 +283,32 @@ export const useReplayStore = defineStore("replay", () => {
     currentReplayTime.value = active[index].time;
     updateView();
   }
+  
+  function jumpToTimestamp(timestamp: number) {
+    const active = datasets.value[activeTimeframe.value];
+    if (!active || active.length === 0) return;
+    let left = 0;
+    let right = active.length - 1;
+    let closestIndex = 0;
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const midTime = active[mid].time;
+      if (midTime === timestamp) {
+        closestIndex = mid;
+        break;
+      }
+      if (Math.abs(midTime - timestamp) < Math.abs(active[closestIndex].time - timestamp)) {
+        closestIndex = mid;
+      }
+      if (midTime < timestamp) {
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+    currentReplayTime.value = active[closestIndex].time;
+    updateView();
+  }
 
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -421,6 +447,7 @@ export const useReplayStore = defineStore("replay", () => {
     loadData,
     togglePlay,
     jumpTo,
+    jumpToTimestamp,
     setSymbol,
     toggleReplaySelection,
     setReplayStart,
