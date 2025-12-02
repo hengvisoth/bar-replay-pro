@@ -50,6 +50,9 @@ export const useReplayStore = defineStore("replay", () => {
   const visibleIndicators = ref<
     Record<string, Record<string, IndicatorPoint[]>>
   >({});
+  const indicatorSeries = ref<Record<string, Record<string, IndicatorPoint[]>>>(
+    {}
+  );
   const isAutoTrading = ref(false);
   const lastProcessedTimeByTf = ref<Record<string, number | null>>({});
   const patternMarkers = ref<Record<string, PatternMarker[]>>({});
@@ -224,7 +227,12 @@ export const useReplayStore = defineStore("replay", () => {
   function updateView() {
     // Filter ALL datasets based on the Master Clock
     const newVisible: Record<string, Candle[]> = {};
-    const newIndicators: Record<string, Record<string, IndicatorPoint[]>> = {};
+    const newIndicatorSeries: Record<string, Record<string, IndicatorPoint[]>> =
+      {};
+    const newVisibleIndicators: Record<
+      string,
+      Record<string, IndicatorPoint[]>
+    > = {};
 
     for (const [key, data] of Object.entries(datasets.value)) {
       // Binary search would be faster here for large datasets,
@@ -234,18 +242,22 @@ export const useReplayStore = defineStore("replay", () => {
         cutoffIndex >= 0 ? data.slice(0, cutoffIndex + 1) : ([] as Candle[]);
       newVisible[key] = filtered;
 
-      newIndicators[key] = computeIndicatorsForVisible(
+      const computedIndicators = computeIndicatorsForVisible(
         key,
         filtered,
         visibleDatasets.value[key] || [],
-        visibleIndicators.value[key] || {}
+        indicatorSeries.value[key] || {}
       );
+
+      newIndicatorSeries[key] = computedIndicators;
+      newVisibleIndicators[key] = filterIndicatorsForDisplay(computedIndicators);
     }
 
     visibleDatasets.value = newVisible;
-    visibleIndicators.value = newIndicators;
+    indicatorSeries.value = newIndicatorSeries;
+    visibleIndicators.value = newVisibleIndicators;
 
-    handleAutoTrading(newVisible, newIndicators);
+    handleAutoTrading(newVisible, newIndicatorSeries);
   }
 
   function handleAutoTrading(
@@ -338,10 +350,17 @@ export const useReplayStore = defineStore("replay", () => {
       text,
     };
 
-    patternMarkers.value = {
-      ...patternMarkers.value,
-      [timeframe]: [...(patternMarkers.value[timeframe] ?? []), marker],
-    };
+    const updatedMarkers: Record<string, PatternMarker[]> = { ...patternMarkers.value };
+    const targetTimeframes = new Set<Timeframe>([
+      ...AVAILABLE_TIMEFRAMES,
+      timeframe,
+    ]);
+
+    for (const tf of targetTimeframes) {
+      updatedMarkers[tf] = [...(updatedMarkers[tf] ?? []), marker];
+    }
+
+    patternMarkers.value = updatedMarkers;
   }
 
   function computeIndicatorsForVisible(
@@ -543,14 +562,23 @@ export const useReplayStore = defineStore("replay", () => {
       const instanceMap = indicatorInstances.value[timeframe];
 
       for (const definition of INDICATOR_DEFINITIONS) {
-        const isActive = !!activeIndicators.value[definition.id];
-        if (isActive && !instanceMap[definition.id]) {
+        if (!instanceMap[definition.id]) {
           instanceMap[definition.id] = createIndicatorInstance(definition);
-        } else if (!isActive && instanceMap[definition.id]) {
-          delete instanceMap[definition.id];
         }
       }
     }
+  }
+
+  function filterIndicatorsForDisplay(
+    series: Record<string, IndicatorPoint[]>
+  ): Record<string, IndicatorPoint[]> {
+    const filtered: Record<string, IndicatorPoint[]> = {};
+    for (const [id, points] of Object.entries(series)) {
+      if (activeIndicators.value[id]) {
+        filtered[id] = points;
+      }
+    }
+    return filtered;
   }
 
   function resetIndicatorInstances() {
