@@ -282,7 +282,8 @@ export const useReplayStore = defineStore("replay", () => {
       h1Data,
       m15Data,
       newIndicators["1h"] || {},
-      newIndicators["15m"] || {}
+      newIndicators["15m"] || {},
+      tradingStore.openPositions
     );
 
     lastProcessedTimeByTf.value = {
@@ -297,12 +298,12 @@ export const useReplayStore = defineStore("replay", () => {
       addPatternMarker("15m", latestM15, signal.pattern);
     }
 
-    if (signal.action === "BUY") {
-      const hasOpenLong = tradingStore.openPositions.some(
-        (pos) => pos.side === "long"
+    if (signal.action === "BUY" || signal.action === "SELL") {
+      const hasOpenOnSide = tradingStore.openPositions.some(
+        (pos) => pos.side === (signal.action === "BUY" ? "long" : "short")
       );
 
-      if (!hasOpenLong) {
+      if (!hasOpenOnSide) {
         const availableBalance =
           typeof tradingStore.availableBalance === "number"
             ? tradingStore.availableBalance
@@ -321,33 +322,45 @@ export const useReplayStore = defineStore("replay", () => {
 
         const size = positionSize > 0 ? positionSize : 1;
 
-        tradingStore.marketBuy(size, latestPrice, latestM15.time, {
-          slPrice: signal.stopLoss ?? undefined,
-        });
+        if (signal.action === "BUY") {
+          tradingStore.marketBuy(size, latestPrice, latestM15.time, {
+            slPrice: signal.stopLoss ?? undefined,
+          });
+        } else {
+          tradingStore.marketSell(size, latestPrice, latestM15.time, {
+            slPrice: signal.stopLoss ?? undefined,
+          });
+        }
       }
     }
 
-    if (signal.action === "CLOSE_LONG") {
-      const openLongs = tradingStore.openPositions.filter(
-        (pos) => pos.side === "long"
+    if (signal.action === "CLOSE_LONG" || signal.action === "CLOSE_SHORT") {
+      const openPositions = tradingStore.openPositions.filter(
+        (pos) => pos.side === (signal.action === "CLOSE_LONG" ? "long" : "short")
       );
 
-      for (const position of openLongs) {
+      for (const position of openPositions) {
         tradingStore.closePosition(position.id, latestPrice, latestM15.time);
       }
     }
   }
 
   function addPatternMarker(timeframe: Timeframe, candle: Candle, pattern: PatternType) {
-    const text =
-      pattern === "BULLISH_ENGULFING" ? "Bull Engulf" : "Hammer";
-
+    const bearish =
+      pattern === "BEARISH_ENGULFING" || pattern === "SHOOTING_STAR";
     const marker: PatternMarker = {
       time: candle.time as UTCTimestamp,
-      position: "belowBar",
+      position: bearish ? "aboveBar" : "belowBar",
       shape: "circle",
-      color: "#fbbf24",
-      text,
+      color: bearish ? "#ef4444" : "#fbbf24",
+      text:
+        pattern === "BULLISH_ENGULFING"
+          ? "Bull Engulf"
+          : pattern === "BEARISH_ENGULFING"
+            ? "Bear Engulf"
+            : pattern === "HAMMER"
+              ? "Hammer"
+              : "Shooting Star",
     };
 
     const updatedMarkers: Record<string, PatternMarker[]> = { ...patternMarkers.value };
