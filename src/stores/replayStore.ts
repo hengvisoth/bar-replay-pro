@@ -466,6 +466,7 @@ export const useReplayStore = defineStore("replay", () => {
     if (enabled) {
       lastProcessedTimeByTf.value = {};
       patternMarkers.value = {};
+      updateView();
     }
   }
 
