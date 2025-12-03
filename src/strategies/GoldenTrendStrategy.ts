@@ -5,6 +5,7 @@ import {
   isHammer,
   isShootingStar,
 } from "../utils/patterns";
+import { INDICATOR_IDS } from "../indicators/indicatorIds";
 
 type IndicatorSeries = Record<string, IndicatorPoint[]>;
 
@@ -83,14 +84,22 @@ export class GoldenTrendStrategy {
   }
 
   private hasBullishBias(candle: Candle, indicators: IndicatorSeries) {
-    const ema50 = this.getIndicatorValue(indicators, "ema50");
-    const ema200 = this.getIndicatorValue(indicators, "ema200");
-    const adx14 = this.getIndicatorValue(indicators, "adx14");
+    const ema50 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_50);
+    const ema200 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_200);
+    const adx14 = this.getIndicatorValue(indicators, INDICATOR_IDS.ADX_14);
 
     if (ema50 == null || ema200 == null || adx14 == null) return false;
 
-    const previousEma50 = this.getIndicatorValue(indicators, "ema50", 1);
-    const previousEma200 = this.getIndicatorValue(indicators, "ema200", 1);
+    const previousEma50 = this.getIndicatorValue(
+      indicators,
+      INDICATOR_IDS.EMA_50,
+      1
+    );
+    const previousEma200 = this.getIndicatorValue(
+      indicators,
+      INDICATOR_IDS.EMA_200,
+      1
+    );
     const previousGap =
       previousEma50 != null && previousEma200 != null
         ? previousEma50 - previousEma200
@@ -99,18 +108,28 @@ export class GoldenTrendStrategy {
 
     const gapHolding = previousGap == null || currentGap >= previousGap;
 
-    return (candle.close ?? 0) > ema50 && ema50 > ema200 && adx14 > 25 && gapHolding;
+    return (
+      (candle.close ?? 0) > ema50 && ema50 > ema200 && adx14 > 25 && gapHolding
+    );
   }
 
   private hasBearishBias(candle: Candle, indicators: IndicatorSeries) {
-    const ema50 = this.getIndicatorValue(indicators, "ema50");
-    const ema200 = this.getIndicatorValue(indicators, "ema200");
-    const adx14 = this.getIndicatorValue(indicators, "adx14");
+    const ema50 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_50);
+    const ema200 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_200);
+    const adx14 = this.getIndicatorValue(indicators, INDICATOR_IDS.ADX_14);
 
     if (ema50 == null || ema200 == null || adx14 == null) return false;
 
-    const previousEma50 = this.getIndicatorValue(indicators, "ema50", 1);
-    const previousEma200 = this.getIndicatorValue(indicators, "ema200", 1);
+    const previousEma50 = this.getIndicatorValue(
+      indicators,
+      INDICATOR_IDS.EMA_50,
+      1
+    );
+    const previousEma200 = this.getIndicatorValue(
+      indicators,
+      INDICATOR_IDS.EMA_200,
+      1
+    );
     const previousGap =
       previousEma50 != null && previousEma200 != null
         ? previousEma50 - previousEma200
@@ -119,7 +138,9 @@ export class GoldenTrendStrategy {
 
     const gapHolding = previousGap == null || currentGap <= previousGap;
 
-    return (candle.close ?? 0) < ema50 && ema50 < ema200 && adx14 > 25 && gapHolding;
+    return (
+      (candle.close ?? 0) < ema50 && ema50 < ema200 && adx14 > 25 && gapHolding
+    );
   }
 
   private shouldEnterLong(
@@ -129,12 +150,13 @@ export class GoldenTrendStrategy {
     const latest = m15Data[m15Data.length - 1]!;
     const previous = m15Data[m15Data.length - 2]!;
 
-    const ema20 = this.getIndicatorValue(indicators, "ema20");
-    const ema50 = this.getIndicatorValue(indicators, "ema50");
-    const rsi14 = this.getIndicatorValue(indicators, "rsi14");
-    const atr14 = this.getIndicatorValue(indicators, "atr14");
+    const ema20 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_20);
+    const ema50 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_50);
+    const rsi14 = this.getIndicatorValue(indicators, INDICATOR_IDS.RSI_14);
+    const atr14 = this.getIndicatorValue(indicators, INDICATOR_IDS.ATR_14);
 
-    if (ema20 == null || ema50 == null || rsi14 == null || atr14 == null) return null;
+    if (ema20 == null || ema50 == null || rsi14 == null || atr14 == null)
+      return null;
 
     const pulledBackToValueZone =
       (latest.low ?? 0) <= ema50 && (latest.close ?? 0) >= ema20;
@@ -160,12 +182,13 @@ export class GoldenTrendStrategy {
     const latest = m15Data[m15Data.length - 1]!;
     const previous = m15Data[m15Data.length - 2]!;
 
-    const ema20 = this.getIndicatorValue(indicators, "ema20");
-    const ema50 = this.getIndicatorValue(indicators, "ema50");
-    const rsi14 = this.getIndicatorValue(indicators, "rsi14");
-    const atr14 = this.getIndicatorValue(indicators, "atr14");
+    const ema20 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_20);
+    const ema50 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_50);
+    const rsi14 = this.getIndicatorValue(indicators, INDICATOR_IDS.RSI_14);
+    const atr14 = this.getIndicatorValue(indicators, INDICATOR_IDS.ATR_14);
 
-    if (ema20 == null || ema50 == null || rsi14 == null || atr14 == null) return null;
+    if (ema20 == null || ema50 == null || rsi14 == null || atr14 == null)
+      return null;
 
     const pulledBackToValueZone =
       (latest.high ?? 0) >= ema50 && (latest.close ?? 0) <= ema20;
@@ -189,7 +212,7 @@ export class GoldenTrendStrategy {
     indicators: IndicatorSeries,
     openPositions: PositionSnapshot[]
   ) {
-    const ema95 = this.getIndicatorValue(indicators, "ema95");
+    const ema95 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_95);
     if (ema95 == null) return false;
 
     const hasProfitableLong = openPositions.some(
@@ -206,7 +229,7 @@ export class GoldenTrendStrategy {
     indicators: IndicatorSeries,
     openPositions: PositionSnapshot[]
   ) {
-    const ema95 = this.getIndicatorValue(indicators, "ema95");
+    const ema95 = this.getIndicatorValue(indicators, INDICATOR_IDS.EMA_95);
     if (ema95 == null) return false;
 
     const hasProfitableShort = openPositions.some(
