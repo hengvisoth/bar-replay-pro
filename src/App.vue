@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import ChartContainer from "./components/ChartContainer.vue";
 import ScrubBar from "./components/ScrubBar.vue";
 import TimeframeTabs from "./components/TimeframeTabs.vue";
 import TradingPanel from "./components/TradingPanel.vue";
 import { useReplayStore } from "./stores/replayStore";
 import { useTradingStore } from "./stores/tradingStore";
+import { useUiStore } from "./stores/uiStore";
 
 const store = useReplayStore();
 const tradingStore = useTradingStore();
+const uiStore = useUiStore();
+const { isRightPanelOpen } = storeToRefs(uiStore);
 const colorInputs = ref<Record<string, HTMLInputElement | null>>({});
 
 watch(
@@ -52,7 +56,10 @@ function handleIndicatorColorChange(id: string, event: Event) {
           <select
             class="bg-[#111a2c] border border-gray-700 rounded px-3 py-1 text-xs text-gray-100 focus:outline-none focus:border-blue-500"
             :value="store.activeSymbol"
-            @change="(event) => store.setSymbol((event.target as HTMLSelectElement).value)"
+            @change="
+              (event) =>
+                store.setSymbol((event.target as HTMLSelectElement).value)
+            "
           >
             <option
               v-for="symbol in store.availableSymbols"
@@ -96,7 +103,7 @@ function handleIndicatorColorChange(id: string, event: Event) {
                 :class="[
                   store.isIndicatorActive(indicator.id)
                     ? 'border-blue-500 bg-blue-500/20 text-blue-100'
-                    : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100'
+                    : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100',
                 ]"
                 @click="store.toggleIndicator(indicator.id)"
               >
@@ -113,10 +120,13 @@ function handleIndicatorColorChange(id: string, event: Event) {
                 type="color"
                 class="absolute opacity-0 pointer-events-none w-0 h-0"
                 :value="indicator.color"
-                :ref="(el) =>
-                  setColorInputRef(indicator.id, el as HTMLInputElement | null)
+                :ref="
+                  (el) =>
+                    setColorInputRef(indicator.id, el as HTMLInputElement | null)
                 "
-                @input="(event) => handleIndicatorColorChange(indicator.id, event)"
+                @input="
+                  (event) => handleIndicatorColorChange(indicator.id, event)
+                "
               />
             </div>
           </div>
@@ -127,7 +137,33 @@ function handleIndicatorColorChange(id: string, event: Event) {
         <div class="flex-1 relative">
           <ChartContainer :timeframe="store.activeTimeframe" />
         </div>
-        <TradingPanel />
+
+        <!-- Right Panel -->
+        <div class="relative flex-shrink-0 border-l border-gray-800">
+          <!-- Toggle Button -->
+          <button
+            @click="uiStore.toggleRightPanel()"
+            class="absolute -left-3.5 top-1/2 -translate-y-1/2 z-10 h-12 w-3.5 bg-gray-700 hover:bg-blue-600 rounded-l-sm flex items-center justify-center transition"
+            title="Toggle Panel"
+          >
+            <svg
+              class="w-3.5 h-3.5 text-gray-300 transform transition-transform duration-200"
+              :class="isRightPanelOpen ? '' : 'rotate-180'"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path
+                d="M13.293 6.293L7.586 12l5.707 5.707l1.414-1.414L10.414 12l4.293-4.293z"
+              />
+            </svg>
+          </button>
+          <div
+            class="transition-all duration-300 ease-in-out overflow-y-auto h-full"
+            :class="isRightPanelOpen ? 'w-80 md:w-80 lg:w-96' : 'w-0'"
+          >
+            <TradingPanel />
+          </div>
+        </div>
       </div>
     </div>
 
