@@ -510,6 +510,28 @@ export const useTradingStore = defineStore("trading", () => {
     resetSession();
   }
 
+  function openPositionWithRisk(
+    side: PositionSide,
+    riskPercent: number, // e.g., 0.1 for 10%
+    price: number,
+    time: number,
+    options?: { slPrice?: number | null; tpPrice?: number | null }
+  ) {
+    if (riskPercent <= 0 || riskPercent > 1) return false;
+
+    const desiredMargin = availableBalance.value * riskPercent;
+    if (desiredMargin <= 0) return false;
+
+    const positionSize = (desiredMargin * leverage.value) / price;
+    if (positionSize <= 0) return false;
+
+    if (side === 'long') {
+      return marketBuy(positionSize, price, time, options);
+    } else {
+      return marketSell(positionSize, price, time, options);
+    }
+  }
+
   return {
     tradingConfig,
     cashBalance,
@@ -536,5 +558,6 @@ export const useTradingStore = defineStore("trading", () => {
     setLeverage,
     getMarginRequirement,
     updateTradingConfig,
+    openPositionWithRisk,
   };
 });
