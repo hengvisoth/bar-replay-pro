@@ -47,13 +47,17 @@ interface PendingOrder {
   tpPrice: number | null;
 }
 
-const STARTING_BALANCE = 100;
+const DEFAULT_TRADING_CONFIG = {
+  startingBalance: 100,
+  tradeHistoryLimit: 100,
+};
 const MIN_LEVERAGE = 1;
 const MAX_LEVERAGE = 25;
 const EPSILON = 1e-8;
 
 export const useTradingStore = defineStore("trading", () => {
-  const cashBalance = ref(STARTING_BALANCE);
+  const tradingConfig = ref({ ...DEFAULT_TRADING_CONFIG });
+  const cashBalance = ref(tradingConfig.value.startingBalance);
   const openPositions = ref<Position[]>([]);
   const pendingOrders = ref<PendingOrder[]>([]);
   const tradeHistory = ref<ClosedTrade[]>([]);
@@ -254,7 +258,7 @@ export const useTradingStore = defineStore("trading", () => {
         riskReward,
       });
 
-      if (tradeHistory.value.length > 100) {
+      if (tradeHistory.value.length > tradingConfig.value.tradeHistoryLimit) {
         tradeHistory.value.pop();
       }
 
@@ -398,40 +402,27 @@ export const useTradingStore = defineStore("trading", () => {
 
   function evaluateTriggers(position: Position, candle: Candle): number | null {
     const { slPrice, tpPrice, side } = position;
-    const { high, low, open, close } = candle;
-    const isGreen = close >= open;
+    const { high, low } = candle;
 
     if (side === "long") {
-      if (isGreen) {
-        if (slPrice && low <= slPrice) {
-          return slPrice;
-        }
-        if (tpPrice && high >= tpPrice) {
-          return tpPrice;
-        }
-      } else {
-        if (tpPrice && high >= tpPrice) {
-          return tpPrice;
-        }
-        if (slPrice && low <= slPrice) {
-          return slPrice;
-        }
+      // For a long position, a stop-loss is triggered if the price drops to or below the slPrice.
+      // We check the stop-loss first, assuming a worst-case scenario where both SL and TP could be hit.
+      if (slPrice && low <= slPrice) {
+        return slPrice;
+      }
+      // A take-profit is triggered if the price rises to or above the tpPrice.
+      if (tpPrice && high >= tpPrice) {
+        return tpPrice;
       }
     } else {
-      if (isGreen) {
-        if (tpPrice && low <= tpPrice) {
-          return tpPrice;
-        }
-        if (slPrice && high >= slPrice) {
-          return slPrice;
-        }
-      } else {
-        if (slPrice && high >= slPrice) {
-          return slPrice;
-        }
-        if (tpPrice && low <= tpPrice) {
-          return tpPrice;
-        }
+      // side === 'short'
+      // For a short position, a stop-loss is triggered if the price rises to or above the slPrice.
+      if (slPrice && high >= slPrice) {
+        return slPrice;
+      }
+      // A take-profit is triggered if the price drops to or below the tpPrice.
+      if (tpPrice && low <= tpPrice) {
+        return tpPrice;
       }
     }
 
@@ -503,7 +494,7 @@ export const useTradingStore = defineStore("trading", () => {
   }
 
   function resetSession() {
-    cashBalance.value = STARTING_BALANCE;
+    cashBalance.value = tradingConfig.value.startingBalance;
     openPositions.value = [];
     pendingOrders.value = [];
     tradeHistory.value = [];
@@ -512,8 +503,15 @@ export const useTradingStore = defineStore("trading", () => {
     nextOrderId = 1;
   }
 
+  function updateTradingConfig(
+    newConfig: Partial<typeof DEFAULT_TRADING_CONFIG>
+  ) {
+    tradingConfig.value = { ...tradingConfig.value, ...newConfig };
+    resetSession();
+  }
+
   return {
-    startingBalance: STARTING_BALANCE,
+    tradingConfig,
     cashBalance,
     availableBalance,
     openPositions,
@@ -537,5 +535,6 @@ export const useTradingStore = defineStore("trading", () => {
     tradeMarkers,
     setLeverage,
     getMarginRequirement,
+    updateTradingConfig,
   };
 });
