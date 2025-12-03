@@ -363,9 +363,7 @@ watch(orderMode, (mode) => {
 </script>
 
 <template>
-  <div
-    class="w-full md:w-80 lg:w-96 bg-[#0b111e] border-l border-gray-800 flex flex-col text-sm"
-  >
+  <div class="bg-[#0b111e] flex flex-col text-sm h-full w-full">
     <div class="p-4 border-b border-gray-800 space-y-3">
       <div class="flex justify-between text-sm text-gray-300">
         <span>Cash</span>
