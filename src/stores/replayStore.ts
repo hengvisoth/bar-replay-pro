@@ -17,10 +17,14 @@ import {
   type PatternType,
 } from "../strategies/GoldenTrendStrategy";
 
-const AVAILABLE_TIMEFRAMES: Timeframe[] = ["15m", "1h"];
 const TIMEFRAME_STEP_SECONDS: Record<string, number> = {
+  "1m": 60,
+  "5m": 60 * 5,
   "15m": 60 * 15,
+  "30m": 60 * 30,
   "1h": 60 * 60,
+  "4h": 60 * 60 * 4,
+  "1d": 60 * 60 * 24,
 };
 type IndicatorState = Record<string, boolean>;
 type IndicatorSettingsState = Record<string, { color?: string }>;
@@ -43,7 +47,6 @@ const defaultIndicatorState: IndicatorState = INDICATOR_DEFINITIONS.reduce(
 
 export const useReplayStore = defineStore("replay", () => {
   // --- STATE ---
-  // We now map keys (e.g., "1h", "15m") to data arrays
   const tradingStore = useTradingStore();
   const datasets = ref<Record<string, Candle[]>>({});
   const visibleDatasets = ref<Record<string, Candle[]>>({});
@@ -53,6 +56,7 @@ export const useReplayStore = defineStore("replay", () => {
   const indicatorSeries = ref<Record<string, Record<string, IndicatorPoint[]>>>(
     {}
   );
+  const availableTimeframes = ref<Timeframe[]>([]);
   const isAutoTrading = ref(false);
   const lastProcessedTimeByTf = ref<Record<string, number | null>>({});
   const patternMarkers = ref<Record<string, PatternMarker[]>>({});
@@ -155,17 +159,25 @@ export const useReplayStore = defineStore("replay", () => {
       return;
     }
 
+    const timeframes = Object.keys(symbolManifest).sort() as Timeframe[];
+    availableTimeframes.value = timeframes;
+    if (!timeframes.includes(activeTimeframe.value)) {
+      activeTimeframe.value = timeframes[0] ?? "1h";
+    }
+
     const loaded: Record<string, Candle[]> = {};
 
     await Promise.all(
-      AVAILABLE_TIMEFRAMES.map(async (tf) => {
+      availableTimeframes.value.map(async (tf) => {
         const files = symbolManifest[tf] || [];
         if (files.length === 0) {
           loaded[tf] = [];
           return;
         }
 
-        const results = await Promise.all(files.map((filePath) => loadCsvData(filePath)));
+        const results = await Promise.all(
+          files.map((filePath) => loadCsvData(filePath))
+        );
         const merged = results.flat().sort((a, b) => a.time - b.time);
         loaded[tf] = merged;
       })
@@ -193,7 +205,9 @@ export const useReplayStore = defineStore("replay", () => {
     return manifest;
   }
 
-  const availableSymbols = computed(() => Object.keys(dataManifest.value || {}));
+  const availableSymbols = computed(() =>
+    Object.keys(dataManifest.value || {})
+  );
 
   async function setSymbol(symbol: string) {
     if (symbol === activeSymbol.value) return;
@@ -250,7 +264,8 @@ export const useReplayStore = defineStore("replay", () => {
       );
 
       newIndicatorSeries[key] = computedIndicators;
-      newVisibleIndicators[key] = filterIndicatorsForDisplay(computedIndicators);
+      newVisibleIndicators[key] =
+        filterIndicatorsForDisplay(computedIndicators);
     }
 
     visibleDatasets.value = newVisible;
@@ -304,39 +319,22 @@ export const useReplayStore = defineStore("replay", () => {
       );
 
       if (!hasOpenOnSide) {
-        const availableBalance =
-          typeof tradingStore.availableBalance === "number"
-            ? tradingStore.availableBalance
-            : (tradingStore.availableBalance as unknown as { value: number })
-                .value ?? 0;
-        const leverageValue =
-          typeof tradingStore.leverage === "number"
-            ? tradingStore.leverage
-            : (tradingStore.leverage as unknown as { value: number }).value ?? 0;
-
-        const desiredMargin = availableBalance * 0.1;
-        const positionSize =
-          leverageValue && latestPrice
-            ? (desiredMargin * leverageValue) / latestPrice
-            : 0;
-
-        const size = positionSize > 0 ? positionSize : 1;
-
-        if (signal.action === "BUY") {
-          tradingStore.marketBuy(size, latestPrice, latestM15.time, {
-            slPrice: signal.stopLoss ?? undefined,
-          });
-        } else {
-          tradingStore.marketSell(size, latestPrice, latestM15.time, {
-            slPrice: signal.stopLoss ?? undefined,
-          });
-        }
+        // Use a fixed 10% of balance for the margin
+        const riskPercent = 0.1;
+        tradingStore.openPositionWithRisk(
+          signal.action === "BUY" ? "long" : "short",
+          riskPercent,
+          latestPrice,
+          latestM15.time,
+          { slPrice: signal.stopLoss ?? undefined }
+        );
       }
     }
 
     if (signal.action === "CLOSE_LONG" || signal.action === "CLOSE_SHORT") {
       const openPositions = tradingStore.openPositions.filter(
-        (pos) => pos.side === (signal.action === "CLOSE_LONG" ? "long" : "short")
+        (pos) =>
+          pos.side === (signal.action === "CLOSE_LONG" ? "long" : "short")
       );
 
       for (const position of openPositions) {
@@ -345,7 +343,11 @@ export const useReplayStore = defineStore("replay", () => {
     }
   }
 
-  function addPatternMarker(timeframe: Timeframe, candle: Candle, pattern: PatternType) {
+  function addPatternMarker(
+    timeframe: Timeframe,
+    candle: Candle,
+    pattern: PatternType
+  ) {
     const bearish =
       pattern === "BEARISH_ENGULFING" || pattern === "SHOOTING_STAR";
     const marker: PatternMarker = {
@@ -357,15 +359,17 @@ export const useReplayStore = defineStore("replay", () => {
         pattern === "BULLISH_ENGULFING"
           ? "Bull Engulf"
           : pattern === "BEARISH_ENGULFING"
-            ? "Bear Engulf"
-            : pattern === "HAMMER"
-              ? "Hammer"
-              : "Shooting Star",
+          ? "Bear Engulf"
+          : pattern === "HAMMER"
+          ? "Hammer"
+          : "Shooting Star",
     };
 
-    const updatedMarkers: Record<string, PatternMarker[]> = { ...patternMarkers.value };
+    const updatedMarkers: Record<string, PatternMarker[]> = {
+      ...patternMarkers.value,
+    };
     const targetTimeframes = new Set<Timeframe>([
-      ...AVAILABLE_TIMEFRAMES,
+      ...availableTimeframes.value,
       timeframe,
     ]);
 
@@ -435,7 +439,7 @@ export const useReplayStore = defineStore("replay", () => {
     currentReplayTime.value = active[index].time;
     updateView();
   }
-  
+
   function jumpToTimestamp(timestamp: number) {
     const active = datasets.value[activeTimeframe.value];
     if (!active || active.length === 0) return;
@@ -568,7 +572,7 @@ export const useReplayStore = defineStore("replay", () => {
   );
 
   function syncIndicatorInstancesWithState() {
-    for (const timeframe of AVAILABLE_TIMEFRAMES) {
+    for (const timeframe of availableTimeframes.value) {
       if (!indicatorInstances.value[timeframe]) {
         indicatorInstances.value[timeframe] = {};
       }
@@ -604,7 +608,7 @@ export const useReplayStore = defineStore("replay", () => {
   syncIndicatorInstancesWithState();
 
   return {
-    availableTimeframes: AVAILABLE_TIMEFRAMES,
+    availableTimeframes,
     indicatorDefinitions: decoratedIndicatorDefinitions,
     setIndicatorColor,
     indicatorSettings,
