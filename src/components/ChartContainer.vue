@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from "vue";
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from "vue";
 import {
   createChart,
   type IChartApi,
@@ -22,7 +22,6 @@ import { useTradingStore } from "../stores/tradingStore";
 import ChartLegend from "./ChartLegend.vue";
 import type { Candle, IndicatorDefinition } from "../data/types";
 
-const OSCILLATOR_TYPES = new Set(["atr", "rsi", "adx"]);
 const HANDLE_HEIGHT = 8;
 
 const props = defineProps<{
@@ -34,10 +33,10 @@ const tradingStore = useTradingStore();
 
 const paneRoot = ref<HTMLElement | null>(null);
 const mainChartContainer = ref<HTMLElement | null>(null);
-const oscillatorChartContainer = ref<HTMLElement | null>(null);
+const paneChartContainer = ref<HTMLElement | null>(null);
 const mainPaneRatio = ref(0.7);
 const mainPaneHeight = ref(0);
-const oscillatorPaneHeight = ref(0);
+const paneHeight = ref(0);
 
 const hoveredCandle = ref<Candle | null>(null);
 const legendIndicators = ref<
@@ -46,12 +45,12 @@ const legendIndicators = ref<
 const savedRanges = ref<Record<string, LogicalRange | null>>({});
 
 let mainChart: IChartApi | null = null;
-let oscillatorChart: IChartApi | null = null;
+let paneChart: IChartApi | null = null;
 let candleSeries: ISeriesApi<"Candlestick"> | null = null;
 let overlayIndicatorSeries: Record<string, ISeriesApi<"Line">> = {};
-let oscillatorIndicatorSeries: Record<string, ISeriesApi<"Line">> = {};
+let paneIndicatorSeries: Record<string, ISeriesApi<"Line">> = {};
 let unsubscribeMainRange: (() => void) | null = null;
-let unsubscribeOscRange: (() => void) | null = null;
+let unsubscribePaneRange: (() => void) | null = null;
 let isSyncingRange = false;
 let tradeMarkersPrimitive: ISeriesMarkersPluginApi<Time> | null = null;
 let clickHandler: ((param: MouseEventParams) => void) | null = null;
@@ -61,10 +60,16 @@ let resizeStartY = 0;
 let resizeStartRatio = 0;
 let paneResizeObserver: ResizeObserver | null = null;
 
+const hasPaneIndicators = computed(() =>
+  store.activeIndicatorDefinitions.some(
+    (def) => isPaneIndicator(def) && store.isIndicatorActive(def.id)
+  )
+);
+
 onMounted(async () => {
   await nextTick();
   recomputePaneHeights();
-  if (!mainChartContainer.value || !oscillatorChartContainer.value) return;
+  if (!mainChartContainer.value) return;
 
   mainChart = createChart(mainChartContainer.value, {
     layout: { background: { color: "#10141f" }, textColor: "#d1d4dc" },
@@ -75,14 +80,16 @@ onMounted(async () => {
     crosshair: { mode: 1 },
   });
 
-  oscillatorChart = createChart(oscillatorChartContainer.value, {
-    layout: { background: { color: "#0d111d" }, textColor: "#d1d4dc" },
-    grid: { vertLines: { color: "#1f2937" }, horzLines: { color: "#1f2937" } },
-    width: oscillatorChartContainer.value.clientWidth,
-    height: oscillatorChartContainer.value.clientHeight,
-    timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 5 },
-    crosshair: { mode: 1 },
-  });
+  if (paneChartContainer.value) {
+    paneChart = createChart(paneChartContainer.value, {
+      layout: { background: { color: "#0d111d" }, textColor: "#d1d4dc" },
+      grid: { vertLines: { color: "#1f2937" }, horzLines: { color: "#1f2937" } },
+      width: paneChartContainer.value.clientWidth,
+      height: paneChartContainer.value.clientHeight,
+      timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 5 },
+      crosshair: { mode: 1 },
+    });
+  }
 
   candleSeries = mainChart.addSeries(CandlestickSeries, {
     upColor: "#26a69a",
@@ -94,17 +101,18 @@ onMounted(async () => {
   tradeMarkersPrimitive = createSeriesMarkers(candleSeries, []);
 
   overlayIndicatorSeries = {};
-  oscillatorIndicatorSeries = {};
+  paneIndicatorSeries = {};
   for (const indicator of store.indicatorDefinitions) {
-    const targetChart = isOscillator(indicator) ? oscillatorChart : mainChart;
+    const isPane = isPaneIndicator(indicator);
+    const targetChart = isPane ? paneChart : mainChart;
     if (!targetChart) continue;
     const series = targetChart.addSeries(LineSeries, {
       color: indicator.color,
       lineWidth: (indicator.lineWidth ?? 2) as LineWidth,
       crosshairMarkerVisible: false,
     });
-    if (isOscillator(indicator)) {
-      oscillatorIndicatorSeries[indicator.id] = series;
+    if (isPane) {
+      paneIndicatorSeries[indicator.id] = series;
     } else {
       overlayIndicatorSeries[indicator.id] = series;
     }
@@ -133,9 +141,10 @@ onMounted(async () => {
   };
 
   mainChart.subscribeCrosshairMove((param: MouseEventParams) => {
-    if (!candleSeries) {
-      return;
+    if (paneChart) {
+      paneChart.setCrosshairPosition(param.point?.x ?? 0, param.point?.y ?? 0, param.time);
     }
+    if (!candleSeries) return;
     if (!param.time) {
       updateLegendToLatest();
       return;
@@ -157,7 +166,10 @@ onMounted(async () => {
     handleHoverAtTime(param.time);
   });
 
-  oscillatorChart.subscribeCrosshairMove((param: MouseEventParams) => {
+  paneChart?.subscribeCrosshairMove((param: MouseEventParams) => {
+    if (mainChart) {
+      mainChart.setCrosshairPosition(param.point?.x ?? 0, param.point?.y ?? 0, param.time);
+    }
     if (!param.time) {
       updateLegendToLatest();
       return;
@@ -175,25 +187,26 @@ onMounted(async () => {
   updatePendingOrderLines();
 
   const mainTimeScale = mainChart.timeScale();
-  const oscillatorTimeScale = oscillatorChart.timeScale();
   const handleMainRangeChange = (range: LogicalRange | null) => {
     if (!range || isSyncingRange) return;
     savedRanges.value[props.timeframe] = { ...range };
-    setOscillatorRange(range);
-  };
-  const handleOscillatorRangeChange = (range: LogicalRange | null) => {
-    if (!range || isSyncingRange) return;
-    savedRanges.value[props.timeframe] = { ...range };
-    setMainRange(range);
+    setPaneRange(range);
   };
   mainTimeScale.subscribeVisibleLogicalRangeChange(handleMainRangeChange);
-  oscillatorTimeScale.subscribeVisibleLogicalRangeChange(handleOscillatorRangeChange);
   unsubscribeMainRange = () =>
     mainTimeScale.unsubscribeVisibleLogicalRangeChange(handleMainRangeChange);
-  unsubscribeOscRange = () =>
-    oscillatorTimeScale.unsubscribeVisibleLogicalRangeChange(
-      handleOscillatorRangeChange
-    );
+
+  if (paneChart) {
+    const paneTimeScale = paneChart.timeScale();
+    const handlePaneRangeChange = (range: LogicalRange | null) => {
+      if (!range || isSyncingRange) return;
+      savedRanges.value[props.timeframe] = { ...range };
+      setMainRange(range);
+    };
+    paneTimeScale.subscribeVisibleLogicalRangeChange(handlePaneRangeChange);
+    unsubscribePaneRange = () =>
+      paneTimeScale.unsubscribeVisibleLogicalRangeChange(handlePaneRangeChange);
+  }
 
   paneResizeObserver = new ResizeObserver(() => {
     recomputePaneHeights();
@@ -206,8 +219,8 @@ onMounted(async () => {
   window.addEventListener("resize", handleResize);
 });
 
-function isOscillator(definition: IndicatorDefinition) {
-  return OSCILLATOR_TYPES.has(definition.type);
+function isPaneIndicator(definition: IndicatorDefinition) {
+  return definition.overlay === false;
 }
 
 function setMainRange(range: LogicalRange) {
@@ -217,19 +230,24 @@ function setMainRange(range: LogicalRange) {
   isSyncingRange = false;
 }
 
-function setOscillatorRange(range: LogicalRange) {
-  if (!oscillatorChart) return;
+function setPaneRange(range: LogicalRange) {
+  if (!paneChart) return;
   isSyncingRange = true;
-  oscillatorChart.timeScale().setVisibleLogicalRange(range);
+  paneChart.timeScale().setVisibleLogicalRange(range);
   isSyncingRange = false;
 }
 
 function recomputePaneHeights() {
   if (!paneRoot.value) return;
   const totalHeight = paneRoot.value.clientHeight;
+  if (!hasPaneIndicators.value) {
+    mainPaneHeight.value = totalHeight;
+    paneHeight.value = 0;
+    return;
+  }
   const chartSpace = Math.max(totalHeight - HANDLE_HEIGHT, 0);
   mainPaneHeight.value = chartSpace * mainPaneRatio.value;
-  oscillatorPaneHeight.value = chartSpace * (1 - mainPaneRatio.value);
+  paneHeight.value = chartSpace * (1 - mainPaneRatio.value);
 }
 
 function beginPaneResize(event: MouseEvent) {
@@ -249,8 +267,6 @@ function handlePaneResizeMove(event: MouseEvent) {
   const deltaRatio = (event.clientY - resizeStartY) / usableHeight;
   const nextRatio = Math.min(0.9, Math.max(0.2, resizeStartRatio + deltaRatio));
   mainPaneRatio.value = nextRatio;
-  recomputePaneHeights();
-  resizeCharts();
 }
 
 function endPaneResize() {
@@ -288,13 +304,13 @@ function initIndicatorData() {
 }
 
 function getSeriesForIndicator(indicator: IndicatorDefinition) {
-  return isOscillator(indicator)
-    ? oscillatorIndicatorSeries[indicator.id]
+  return isPaneIndicator(indicator)
+    ? paneIndicatorSeries[indicator.id]
     : overlayIndicatorSeries[indicator.id];
 }
 
 function getSeriesById(id: string) {
-  return overlayIndicatorSeries[id] ?? oscillatorIndicatorSeries[id];
+  return overlayIndicatorSeries[id] ?? paneIndicatorSeries[id];
 }
 
 function saveCurrentRange(timeframe: string) {
@@ -310,12 +326,12 @@ function applySavedRangeOrFit() {
   const range = savedRanges.value[props.timeframe];
   if (range) {
     setMainRange(range);
-    setOscillatorRange(range);
+    setPaneRange(range);
   } else {
     mainChart.timeScale().fitContent();
     const fittedRange = mainChart.timeScale().getVisibleLogicalRange();
     if (fittedRange) {
-      setOscillatorRange(fittedRange);
+      setPaneRange(fittedRange);
       savedRanges.value[props.timeframe] = { ...fittedRange };
     }
   }
@@ -383,7 +399,8 @@ watch(
     }
     updateIndicatorLegendValues();
     updateTradeMarkers();
-  }
+  },
+  { deep: true }
 );
 
 watch(
@@ -409,7 +426,10 @@ watch(
 );
 
 watch(mainPaneRatio, () => {
-  if (isPaneResizing) return;
+  recomputePaneHeights();
+  resizeCharts();
+});
+watch(hasPaneIndicators, () => {
   recomputePaneHeights();
   resizeCharts();
 });
@@ -446,9 +466,9 @@ onUnmounted(() => {
     unsubscribeMainRange();
     unsubscribeMainRange = null;
   }
-  if (unsubscribeOscRange) {
-    unsubscribeOscRange();
-    unsubscribeOscRange = null;
+  if (unsubscribePaneRange) {
+    unsubscribePaneRange();
+    unsubscribePaneRange = null;
   }
   if (tradeMarkersPrimitive) {
     tradeMarkersPrimitive.setMarkers([]);
@@ -461,8 +481,8 @@ onUnmounted(() => {
   if (mainChart) {
     mainChart.remove();
   }
-  if (oscillatorChart) {
-    oscillatorChart.remove();
+  if (paneChart) {
+    paneChart.remove();
   }
   clickHandler = null;
 });
@@ -479,10 +499,10 @@ function resizeCharts() {
       height: mainChartContainer.value.clientHeight,
     });
   }
-  if (oscillatorChart && oscillatorChartContainer.value) {
-    oscillatorChart.applyOptions({
-      width: oscillatorChartContainer.value.clientWidth,
-      height: oscillatorChartContainer.value.clientHeight,
+  if (paneChart && paneChartContainer.value) {
+    paneChart.applyOptions({
+      width: paneChartContainer.value.clientWidth,
+      height: paneChartContainer.value.clientHeight,
     });
   }
 }
@@ -602,19 +622,25 @@ function clearPendingOrderLines() {
         <div ref="mainChartContainer" class="w-full h-full"></div>
       </div>
 
-      <div
-        class="h-2 bg-gray-800/80 hover:bg-gray-700/80 text-[10px] uppercase tracking-[0.3em] text-gray-400 flex items-center justify-center cursor-row-resize select-none"
-        @mousedown="beginPaneResize"
-      >
-        Drag
-      </div>
+      <template v-if="hasPaneIndicators">
+        <div
+          class="h-2 bg-gray-800/80 hover:bg-gray-700/80 flex items-center justify-center cursor-row-resize select-none"
+          @mousedown="beginPaneResize"
+        >
+          <svg class="w-4 h-1 text-gray-500" viewBox="0 0 16 4" fill="currentColor">
+            <circle cx="2" cy="2" r="1" />
+            <circle cx="8" cy="2" r="1" />
+            <circle cx="14" cy="2" r="1" />
+          </svg>
+        </div>
 
-      <div
-        class="relative w-full"
-        :style="{ height: `${oscillatorPaneHeight}px`, minHeight: '120px' }"
-      >
-        <div ref="oscillatorChartContainer" class="w-full h-full"></div>
-      </div>
+        <div
+          class="relative w-full"
+          :style="{ height: `${paneHeight}px`, minHeight: '120px' }"
+        >
+          <div ref="paneChartContainer" class="w-full h-full"></div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
