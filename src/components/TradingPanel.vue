@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref, watch, onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { useTradingStore } from "../stores/tradingStore";
 import { useReplayStore } from "../stores/replayStore";
@@ -7,6 +7,7 @@ import { useReplayStore } from "../stores/replayStore";
 const tradingStore = useTradingStore();
 const replayStore = useReplayStore();
 const { isAutoTrading } = storeToRefs(replayStore);
+const { tradingConfig } = storeToRefs(tradingStore);
 const PRICE_TOLERANCE = 1e-6;
 
 const orderMargin = ref(100);
@@ -15,6 +16,35 @@ const stopLossPrice = ref<number | null>(null);
 const takeProfitPrice = ref<number | null>(null);
 const orderMode = ref<"market" | "pending">("market");
 const pendingEntryPrice = ref<number | null>(null);
+
+// --- Settings State ---
+const localStartingBalance = ref(100);
+const localTradeHistoryLimit = ref(100);
+
+function syncConfigToLocal() {
+  localStartingBalance.value = tradingConfig.value.startingBalance;
+  localTradeHistoryLimit.value = tradingConfig.value.tradeHistoryLimit;
+}
+
+onMounted(() => {
+  syncConfigToLocal();
+});
+
+watch(
+  tradingConfig,
+  () => {
+    syncConfigToLocal();
+  },
+  { deep: true }
+);
+
+function handleSaveSettings() {
+  tradingStore.updateTradingConfig({
+    startingBalance: Number(localStartingBalance.value),
+    tradeHistoryLimit: Number(localTradeHistoryLimit.value),
+  });
+}
+// --- End Settings State ---
 
 const currentCandle = computed(() => {
   const dataset = replayStore.visibleDatasets[replayStore.activeTimeframe] || [];
@@ -73,9 +103,19 @@ const pendingOrderHint = computed(() => {
   if (!pendingEntryPrice.value || !currentPrice.value) {
     return "Set an entry price to create a limit or stop order.";
   }
-  const buyType = determineOrderType("long", pendingEntryPrice.value, currentPrice.value);
-  const sellType = determineOrderType("short", pendingEntryPrice.value, currentPrice.value);
-  return `Buy ${buyType?.toUpperCase() ?? "--"} / Sell ${sellType?.toUpperCase() ?? "--"}`;
+  const buyType = determineOrderType(
+    "long",
+    pendingEntryPrice.value,
+    currentPrice.value
+  );
+  const sellType = determineOrderType(
+    "short",
+    pendingEntryPrice.value,
+    currentPrice.value
+  );
+  return `Buy ${
+    buyType?.toUpperCase() ?? "--"
+  } / Sell ${sellType?.toUpperCase() ?? "--"}`;
 });
 
 const projectedSlPnl = computed(() => {
@@ -140,10 +180,15 @@ function handleBuy() {
   if (!hasMargin.value) return;
   const qty = calculatedSize.value;
   if (qty <= 0) return;
-  const executed = tradingStore.marketBuy(qty, currentPrice.value, currentTime.value, {
-    slPrice: normalizedLevel(stopLossPrice.value),
-    tpPrice: normalizedLevel(takeProfitPrice.value),
-  });
+  const executed = tradingStore.marketBuy(
+    qty,
+    currentPrice.value,
+    currentTime.value,
+    {
+      slPrice: normalizedLevel(stopLossPrice.value),
+      tpPrice: normalizedLevel(takeProfitPrice.value),
+    }
+  );
   if (executed) {
     resetProtectionLevels();
   }
@@ -158,10 +203,15 @@ function handleSell() {
   if (!hasMargin.value) return;
   const qty = calculatedSize.value;
   if (qty <= 0) return;
-  const executed = tradingStore.marketSell(qty, currentPrice.value, currentTime.value, {
-    slPrice: normalizedLevel(stopLossPrice.value),
-    tpPrice: normalizedLevel(takeProfitPrice.value),
-  });
+  const executed = tradingStore.marketSell(
+    qty,
+    currentPrice.value,
+    currentTime.value,
+    {
+      slPrice: normalizedLevel(stopLossPrice.value),
+      tpPrice: normalizedLevel(takeProfitPrice.value),
+    }
+  );
   if (executed) {
     resetProtectionLevels();
   }
@@ -254,7 +304,11 @@ function placePendingOrder(side: "long" | "short") {
   if (!hasMargin.value) return;
   const qty = calculatedSize.value;
   if (qty <= 0) return;
-  const orderType = determineOrderType(side, pendingEntryPrice.value, currentPrice.value);
+  const orderType = determineOrderType(
+    side,
+    pendingEntryPrice.value,
+    currentPrice.value
+  );
   if (!orderType) return;
   const placed = tradingStore.placeOrder(
     side,
@@ -275,14 +329,20 @@ function placePendingOrder(side: "long" | "short") {
 function pendingButtonText(side: "long" | "short") {
   if (orderMode.value === "market") {
     if (side === "long") {
-      return `Buy @ ${currentPrice.value ? formatNumber(currentPrice.value) : "--"}`;
+      return `Buy @ ${
+        currentPrice.value ? formatNumber(currentPrice.value) : "--"
+      }`;
     }
     return "Sell / Short";
   }
 
   const typeLabel =
     pendingEntryPrice.value && currentPrice.value
-      ? determineOrderType(side, pendingEntryPrice.value, currentPrice.value)?.toUpperCase()
+      ? determineOrderType(
+          side,
+          pendingEntryPrice.value,
+          currentPrice.value
+        )?.toUpperCase()
       : null;
 
   const action = side === "long" ? "Place Buy" : "Place Sell";
@@ -303,7 +363,9 @@ watch(orderMode, (mode) => {
 </script>
 
 <template>
-  <div class="w-full md:w-80 lg:w-96 bg-[#0b111e] border-l border-gray-800 flex flex-col text-sm">
+  <div
+    class="w-full md:w-80 lg:w-96 bg-[#0b111e] border-l border-gray-800 flex flex-col text-sm"
+  >
     <div class="p-4 border-b border-gray-800 space-y-3">
       <div class="flex justify-between text-sm text-gray-300">
         <span>Cash</span>
@@ -330,7 +392,10 @@ watch(orderMode, (mode) => {
           <span class="text-xs uppercase tracking-widest text-gray-400"
             >Golden Trend</span
           >
-          <span class="text-sm" :class="isAutoTrading ? 'text-green-400' : 'text-gray-400'">
+          <span
+            class="text-sm"
+            :class="isAutoTrading ? 'text-green-400' : 'text-gray-400'"
+          >
             {{ autoTradingStatus }}
           </span>
         </div>
@@ -343,7 +408,7 @@ watch(orderMode, (mode) => {
           "
           @click="toggleAutoTrading"
         >
-          {{ isAutoTrading ? 'Stop Bot' : 'Start Bot' }}
+          {{ isAutoTrading ? "Stop Bot" : "Start Bot" }}
         </button>
       </div>
       <div class="pt-2 flex items-center gap-2">
@@ -382,7 +447,9 @@ watch(orderMode, (mode) => {
       </div>
       <div class="flex justify-between text-sm text-gray-400">
         <span>Est. Qty</span>
-        <span class="text-gray-200">{{ formatNumber(calculatedSize || 0) }}</span>
+        <span class="text-gray-200">{{
+          formatNumber(calculatedSize || 0)
+        }}</span>
       </div>
       <div class="flex items-center gap-2 text-sm text-gray-300">
         <button
@@ -412,7 +479,9 @@ watch(orderMode, (mode) => {
       </div>
       <div class="text-sm text-gray-400">{{ pendingOrderHint }}</div>
       <div v-if="orderMode === 'pending'" class="space-y-1">
-        <label class="text-sm uppercase tracking-widest text-gray-400">Entry Price</label>
+        <label class="text-sm uppercase tracking-widest text-gray-400"
+          >Entry Price</label
+        >
         <input
           v-model.number="pendingEntryPrice"
           type="number"
@@ -476,7 +545,8 @@ watch(orderMode, (mode) => {
           :disabled="
             !canTrade ||
             !hasMargin ||
-            (orderMode === 'pending' && (!pendingEntryPrice || pendingEntryPrice <= 0))
+            (orderMode === 'pending' &&
+              (!pendingEntryPrice || pendingEntryPrice <= 0))
           "
           @click="handleBuy"
         >
@@ -487,7 +557,8 @@ watch(orderMode, (mode) => {
           :disabled="
             !canTrade ||
             !hasMargin ||
-            (orderMode === 'pending' && (!pendingEntryPrice || pendingEntryPrice <= 0))
+            (orderMode === 'pending' &&
+              (!pendingEntryPrice || pendingEntryPrice <= 0))
           "
           @click="handleSell"
         >
@@ -508,7 +579,10 @@ watch(orderMode, (mode) => {
         <h3 class="text-sm uppercase tracking-widest text-gray-400 mb-2">
           Open Positions
         </h3>
-        <div v-if="enrichedPositions.length === 0" class="text-sm text-gray-400">
+        <div
+          v-if="enrichedPositions.length === 0"
+          class="text-sm text-gray-400"
+        >
           No open trades.
         </div>
         <div v-else class="space-y-2">
@@ -565,7 +639,10 @@ watch(orderMode, (mode) => {
         <h3 class="text-sm uppercase tracking-widest text-gray-400 mb-2">
           Working Orders
         </h3>
-        <div v-if="tradingStore.pendingOrders.length === 0" class="text-sm text-gray-400">
+        <div
+          v-if="tradingStore.pendingOrders.length === 0"
+          class="text-sm text-gray-400"
+        >
           No pending orders.
         </div>
         <div v-else class="space-y-2">
@@ -576,7 +653,9 @@ watch(orderMode, (mode) => {
           >
             <div class="flex justify-between">
               <span>Side / Type</span>
-              <span class="uppercase">{{ order.side }} {{ order.orderType }}</span>
+              <span class="uppercase"
+                >{{ order.side }} {{ order.orderType }}</span
+              >
             </div>
             <div class="flex justify-between">
               <span>Entry</span>
@@ -611,7 +690,10 @@ watch(orderMode, (mode) => {
         <h3 class="text-sm uppercase tracking-widest text-gray-400 mb-2">
           Trade History
         </h3>
-        <div v-if="tradingStore.tradeHistory.length === 0" class="text-sm text-gray-400">
+        <div
+          v-if="tradingStore.tradeHistory.length === 0"
+          class="text-sm text-gray-400"
+        >
           No closed trades.
         </div>
         <div v-else class="space-y-2">
@@ -630,7 +712,10 @@ watch(orderMode, (mode) => {
             </div>
             <div class="flex justify-between">
               <span>Entry/Exit</span>
-              <span>{{ formatNumber(trade.entryPrice) }} → {{ formatNumber(trade.exitPrice) }}</span>
+              <span
+                >{{ formatNumber(trade.entryPrice) }} →
+                {{ formatNumber(trade.exitPrice) }}</span
+              >
             </div>
             <div class="flex justify-between">
               <span>Leverage</span>
@@ -653,6 +738,47 @@ watch(orderMode, (mode) => {
               >
             </div>
           </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 class="text-sm uppercase tracking-widest text-gray-400 mb-2">
+          Session Settings
+        </h3>
+        <div class="bg-[#10192f] rounded p-2 text-sm text-gray-200 space-y-3">
+          <div class="flex justify-between items-center">
+            <label for="starting-balance" class="text-gray-300"
+              >Starting Balance (USD)</label
+            >
+            <input
+              id="starting-balance"
+              v-model.number="localStartingBalance"
+              type="number"
+              min="1"
+              step="100"
+              class="w-32 rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-right text-gray-100 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div class="flex justify-between items-center">
+            <label for="history-limit" class="text-gray-300"
+              >Trade History Limit</label
+            >
+            <input
+              id="history-limit"
+              v-model.number="localTradeHistoryLimit"
+              type="number"
+              min="10"
+              max="1000"
+              step="10"
+              class="w-32 rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-right text-gray-100 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <button
+            class="w-full mt-2 py-1.5 rounded border border-blue-600 text-sm font-semibold text-blue-100 hover:bg-blue-500/20 disabled:opacity-40"
+            @click="handleSaveSettings"
+          >
+            Save & Reset Session
+          </button>
         </div>
       </div>
     </div>
