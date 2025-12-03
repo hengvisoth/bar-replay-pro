@@ -23,7 +23,11 @@ const toggleExpanded = () => {
 <template>
   <div
     class="absolute top-3 left-3 z-20 font-mono text-xs pointer-events-none select-none bg-[#10141f]/60 rounded backdrop-blur-sm shadow-lg"
-    :class="isExpanded ? 'p-1 flex flex-wrap gap-x-3' : 'px-2 py-1 flex items-center gap-2'"
+    :class="
+      isExpanded
+        ? 'p-1 flex flex-wrap gap-x-3'
+        : 'px-2 py-1 flex items-center gap-2'
+    "
   >
     <button
       type="button"
@@ -37,42 +41,51 @@ const toggleExpanded = () => {
       <span class="font-bold text-white text-sm">{{ symbol }}</span>
       <span class="text-gray-400 text-sm">{{ interval }}</span>
 
-      <div v-if="candle" class="flex gap-3" :class="getColor(candle)">
-        <span
-          >O<span class="text-white ml-1">{{ fmt(candle.open ?? 0) }}</span></span
-        >
-        <span
-          >H<span class="text-white ml-1">{{ fmt(candle.high ?? 0) }}</span></span
-        >
-        <span
-          >L<span class="text-white ml-1">{{ fmt(candle.low ?? 0) }}</span></span
-        >
-        <span
-          >C<span class="text-white ml-1">{{ fmt(candle.close ?? 0) }}</span></span
-        >
+      <div class="flex-col">
+        <div v-if="candle" class="flex gap-3" :class="getColor(candle)">
+          <span
+            >O<span class="text-white ml-1">{{
+              fmt(candle.open ?? 0)
+            }}</span></span
+          >
+          <span
+            >H<span class="text-white ml-1">{{
+              fmt(candle.high ?? 0)
+            }}</span></span
+          >
+          <span
+            >L<span class="text-white ml-1">{{
+              fmt(candle.low ?? 0)
+            }}</span></span
+          >
+          <span
+            >C<span class="text-white ml-1">{{
+              fmt(candle.close ?? 0)
+            }}</span></span
+          >
 
-        <span v-if="candle.volume"
-          >Vol<span class="text-gray-400 ml-1"
-            >{{ (candle.volume / 1000).toFixed(1) }}K</span
-          ></span
-        >
-      </div>
+          <span v-if="candle.volume"
+            >Vol<span class="text-gray-400 ml-1"
+              >{{ (candle.volume / 1000).toFixed(1) }}K</span
+            ></span
+          >
+        </div>
 
-      <div v-else class="text-gray-500 italic">Loading data...</div>
-
-      <div
-        v-if="props.indicators && props.indicators.length"
-        class="flex flex-col gap-1 text-[11px] text-gray-300"
-      >
+        <div v-else class="text-gray-500 italic">Loading data...</div>
         <div
-          v-for="indicator in props.indicators"
-          :key="indicator.label"
-          class="flex items-center gap-2"
+          v-if="props.indicators && props.indicators.length"
+          class="mt-2 flex gap-1 w-100 text-[11px] text-gray-300"
         >
-          <span class="font-semibold" :style="{ color: indicator.color }">
-            {{ indicator.label }}
-          </span>
-          <span class="text-white">{{ fmt(indicator.value ?? 0) }}</span>
+          <div
+            v-for="indicator in props.indicators"
+            :key="indicator.label"
+            class="flex items-center gap-2"
+          >
+            <span class="font-semibold" :style="{ color: indicator.color }">
+              {{ indicator.label }}
+            </span>
+            <span class="text-white">{{ fmt(indicator.value ?? 0) }}</span>
+          </div>
         </div>
       </div>
     </template>
