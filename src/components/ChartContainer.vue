@@ -20,9 +20,14 @@ import {
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
 import ChartLegend from "./ChartLegend.vue";
-import type { Candle, IndicatorDefinition } from "../data/types";
+import type {
+  Candle,
+  IndicatorDefinition,
+  IndicatorType,
+} from "../data/types";
 
 const HANDLE_HEIGHT = 8;
+const PANE_INDICATOR_TYPES = new Set<IndicatorType>(["atr", "adx", "rsi"]);
 
 const props = defineProps<{
   timeframe: string;
@@ -40,6 +45,9 @@ const paneHeight = ref(0);
 
 const hoveredCandle = ref<Candle | null>(null);
 const legendIndicators = ref<
+  Array<{ label: string; value: number | null; color: string }>
+>([]);
+const paneLegendIndicators = ref<
   Array<{ label: string; value: number | null; color: string }>
 >([]);
 const savedRanges = ref<Record<string, LogicalRange | null>>({});
@@ -220,7 +228,11 @@ onMounted(async () => {
 });
 
 function isPaneIndicator(definition: IndicatorDefinition) {
-  return definition.overlay === false;
+  if (definition.overlay === false) {
+    return true;
+  }
+  // ATR/ADX/RSI style oscillators should live in the dedicated indicator pane
+  return PANE_INDICATOR_TYPES.has(definition.type);
 }
 
 function setMainRange(range: LogicalRange) {
@@ -513,20 +525,28 @@ function updateIndicatorLegendValues(targetTime?: number) {
     store.isIndicatorActive(definition.id)
   );
 
-  const nextLegendValues = activeIndicators.map((definition) => {
+  const overlayValues: Array<{ label: string; value: number | null; color: string }> = [];
+  const paneValues: Array<{ label: string; value: number | null; color: string }> = [];
+
+  for (const definition of activeIndicators) {
     const points = indicatorMap[definition.id] || [];
     const latestPoint = targetTime
       ? [...points].reverse().find((point) => point.time <= targetTime)
       : points[points.length - 1];
-
-    return {
+    const entry = {
       label: definition.label,
       value: latestPoint?.value ?? null,
       color: definition.color,
     };
-  });
+    if (isPaneIndicator(definition)) {
+      paneValues.push(entry);
+    } else {
+      overlayValues.push(entry);
+    }
+  }
 
-  legendIndicators.value = nextLegendValues;
+  legendIndicators.value = overlayValues;
+  paneLegendIndicators.value = paneValues;
 }
 
 function updateTradeMarkers() {
@@ -639,6 +659,25 @@ function clearPendingOrderLines() {
           :style="{ height: `${paneHeight}px`, minHeight: '120px' }"
         >
           <div ref="paneChartContainer" class="w-full h-full"></div>
+          <div
+            v-if="paneLegendIndicators.length"
+            class="absolute left-3 bottom-3 z-10 pointer-events-none bg-[#0d111d]/80 border border-gray-700 rounded px-3 py-2 text-[11px] font-mono text-gray-200 backdrop-blur-sm shadow-lg"
+          >
+            <div class="flex flex-wrap gap-3">
+              <div
+                v-for="indicator in paneLegendIndicators"
+                :key="indicator.label"
+                class="flex items-center gap-2"
+              >
+                <span class="font-semibold" :style="{ color: indicator.color }">
+                  {{ indicator.label }}
+                </span>
+                <span class="text-white">{{
+                  indicator.value == null ? "--" : indicator.value.toFixed(2)
+                }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </template>
     </div>
