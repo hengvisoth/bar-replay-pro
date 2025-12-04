@@ -20,8 +20,7 @@ import {
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
 import ChartLegend from "./ChartLegend.vue";
-import DrawingToolbar from "./DrawingToolbar.vue";
-import DrawingOverlay from "./DrawingOverlay.vue";
+import DrawingManager from "./DrawingManager.vue";
 import type {
   Candle,
   IndicatorDefinition,
@@ -43,6 +42,7 @@ const mainChartContainer = ref<HTMLElement | null>(null);
 const paneChartContainer = ref<HTMLElement | null>(null);
 const drawingChart = ref<IChartApi | null>(null);
 const drawingSeries = ref<ISeriesApi<"Candlestick"> | null>(null);
+const paneReferenceSeries = ref<ISeriesApi<"Line"> | null>(null);
 const mainPaneRatio = ref(0.7);
 const mainPaneHeight = ref(0);
 const paneHeight = ref(0);
@@ -77,6 +77,7 @@ const hasPaneIndicators = computed(() =>
     (def) => isPaneIndicator(def) && store.isIndicatorActive(def.id)
   )
 );
+const activeDatasetForTimeframe = computed(() => store.visibleDatasets[props.timeframe] || []);
 
 onMounted(async () => {
   await nextTick();
@@ -127,6 +128,9 @@ onMounted(async () => {
     });
     if (isPane) {
       paneIndicatorSeries[indicator.id] = series;
+      if (!paneReferenceSeries.value) {
+        paneReferenceSeries.value = series;
+      }
     } else {
       overlayIndicatorSeries[indicator.id] = series;
     }
@@ -517,6 +521,7 @@ onUnmounted(() => {
   }
   drawingChart.value = null;
   drawingSeries.value = null;
+  paneReferenceSeries.value = null;
   clickHandler = null;
 });
 
@@ -654,7 +659,17 @@ function clearPendingOrderLines() {
       :interval="timeframe"
       :indicators="legendIndicators"
     />
-    <DrawingToolbar />
+    <DrawingManager
+      :symbol="store.activeSymbol"
+      :timeframe="timeframe"
+      :dataset="activeDatasetForTimeframe"
+      :main-chart="drawingChart"
+      :main-series="drawingSeries"
+      :main-container="mainChartContainer"
+      :pane-chart="paneChart"
+      :pane-series="paneReferenceSeries"
+      :pane-container="paneChartContainer"
+    />
 
     <div class="absolute inset-0 flex flex-col">
       <div
@@ -662,11 +677,6 @@ function clearPendingOrderLines() {
         :style="{ height: `${mainPaneHeight}px`, minHeight: '160px' }"
       >
         <div ref="mainChartContainer" class="w-full h-full"></div>
-        <DrawingOverlay
-          :chart="drawingChart"
-          :series="drawingSeries"
-          :container="mainChartContainer"
-        />
       </div>
 
       <template v-if="hasPaneIndicators">
