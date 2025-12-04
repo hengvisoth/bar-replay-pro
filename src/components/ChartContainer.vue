@@ -20,6 +20,8 @@ import {
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
 import ChartLegend from "./ChartLegend.vue";
+import DrawingToolbar from "./DrawingToolbar.vue";
+import DrawingOverlay from "./DrawingOverlay.vue";
 import type {
   Candle,
   IndicatorDefinition,
@@ -39,6 +41,8 @@ const tradingStore = useTradingStore();
 const paneRoot = ref<HTMLElement | null>(null);
 const mainChartContainer = ref<HTMLElement | null>(null);
 const paneChartContainer = ref<HTMLElement | null>(null);
+const drawingChart = ref<IChartApi | null>(null);
+const drawingSeries = ref<ISeriesApi<"Candlestick"> | null>(null);
 const mainPaneRatio = ref(0.7);
 const mainPaneHeight = ref(0);
 const paneHeight = ref(0);
@@ -87,6 +91,7 @@ onMounted(async () => {
     timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 5 },
     crosshair: { mode: 1 },
   });
+  drawingChart.value = mainChart;
 
   if (paneChartContainer.value) {
     paneChart = createChart(paneChartContainer.value, {
@@ -106,6 +111,7 @@ onMounted(async () => {
     wickUpColor: "#26a69a",
     wickDownColor: "#ef5350",
   });
+  drawingSeries.value = candleSeries;
   tradeMarkersPrimitive = createSeriesMarkers(candleSeries, []);
 
   overlayIndicatorSeries = {};
@@ -150,7 +156,7 @@ onMounted(async () => {
 
   mainChart.subscribeCrosshairMove((param: MouseEventParams) => {
     if (paneChart) {
-      paneChart.setCrosshairPosition(param.point?.x ?? 0, param.point?.y ?? 0, param.time);
+      syncCrosshairPosition(paneChart, param);
     }
     if (!candleSeries) return;
     if (!param.time) {
@@ -176,7 +182,7 @@ onMounted(async () => {
 
   paneChart?.subscribeCrosshairMove((param: MouseEventParams) => {
     if (mainChart) {
-      mainChart.setCrosshairPosition(param.point?.x ?? 0, param.point?.y ?? 0, param.time);
+      syncCrosshairPosition(mainChart, param);
     }
     if (!param.time) {
       updateLegendToLatest();
@@ -233,6 +239,19 @@ function isPaneIndicator(definition: IndicatorDefinition) {
   }
   // ATR/ADX/RSI style oscillators should live in the dedicated indicator pane
   return PANE_INDICATOR_TYPES.has(definition.type);
+}
+
+function syncCrosshairPosition(
+  targetChart: IChartApi | null,
+  param: MouseEventParams
+) {
+  if (!targetChart || !param.point) return;
+  const setPosition = targetChart.setCrosshairPosition as unknown as (
+    x: number,
+    y: number,
+    time?: Time
+  ) => void;
+  setPosition(param.point.x, param.point.y, param.time ?? undefined);
 }
 
 function setMainRange(range: LogicalRange) {
@@ -496,6 +515,8 @@ onUnmounted(() => {
   if (paneChart) {
     paneChart.remove();
   }
+  drawingChart.value = null;
+  drawingSeries.value = null;
   clickHandler = null;
 });
 
@@ -633,6 +654,7 @@ function clearPendingOrderLines() {
       :interval="timeframe"
       :indicators="legendIndicators"
     />
+    <DrawingToolbar />
 
     <div class="absolute inset-0 flex flex-col">
       <div
@@ -640,6 +662,11 @@ function clearPendingOrderLines() {
         :style="{ height: `${mainPaneHeight}px`, minHeight: '160px' }"
       >
         <div ref="mainChartContainer" class="w-full h-full"></div>
+        <DrawingOverlay
+          :chart="drawingChart"
+          :series="drawingSeries"
+          :container="mainChartContainer"
+        />
       </div>
 
       <template v-if="hasPaneIndicators">
