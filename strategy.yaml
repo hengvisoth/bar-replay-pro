@@ -1,0 +1,350 @@
+version: 1
+
+meta:
+  project: "Crypto Backtest – EMA / SMC / Range"
+  description: "Three core strategies: Golden EMA Trend, SMC Liquidity Reversal, and Range Mean Reversion."
+  author: "Vee"
+  base_settings:
+    initial_capital: 10000
+    risk_per_trade_pct: 2.0
+    max_open_positions: 3
+    trading_pairs:
+      - "BTCUSDT"
+      - "ETHUSDT"
+      - "SOLUSDT"
+    timeframes:
+      bias:
+        - "1h"
+        - "4h"
+      entry:
+        - "15m"
+    fees:
+      maker: 0.0002
+      taker: 0.0004
+
+strategies:
+  ###########################################################################
+  # STRATEGY A – Golden EMA Trend (Trend Continuation)
+  ###########################################################################
+  golden_ema_trend:
+    enabled: true
+    label: "Strategy A – Golden EMA Trend"
+    type: "trend_continuation"
+
+    market_condition_filter:
+      adx:
+        timeframe: "1h"
+        period: 14
+        min_trend_value: 25 # trade only when ADX > 25 (trending)
+
+    bias:
+      timeframe: "1h"
+      long:
+        conditions:
+          - name: "price_above_ema_50"
+            indicator: "ema"
+            period: 50
+            relation: "price > ema"
+          - name: "ema_50_above_ema_200"
+            indicator: "ema_cross"
+            fast_period: 50
+            slow_period: 200
+            direction: "bullish"
+          - name: "ema_gap_expanding"
+            indicator: "ema_spread"
+            fast_period: 50
+            slow_period: 200
+            comparison: "increasing" # spread(50-200) > previous spread
+      short:
+        conditions:
+          - name: "price_below_ema_50"
+            indicator: "ema"
+            period: 50
+            relation: "price < ema"
+          - name: "ema_50_below_ema_200"
+            indicator: "ema_cross"
+            fast_period: 50
+            slow_period: 200
+            direction: "bearish"
+          - name: "ema_gap_expanding_down"
+            indicator: "ema_spread"
+            fast_period: 50
+            slow_period: 200
+            comparison: "decreasing"
+
+    entry:
+      timeframe: "15m"
+      common:
+        ema_fast_period: 20
+        ema_slow_period: 50
+        rsi_period: 14
+        rsi_source: "close"
+
+      long:
+        pullback_zone:
+          condition: "price_between_ema_fast_slow"
+          touch_preference: "ema_slow" # prefer touch of 50 EMA
+        trigger_candle:
+          allowed_patterns:
+            - "bullish_pin_bar"
+            - "hammer"
+            - "bullish_engulfing"
+          must_touch:
+            - "ema_slow"
+        rsi_filter:
+          type: "hidden_bullish_divergence"
+          lookback_bars_price: 30
+          lookback_bars_rsi: 30
+        extra_filters:
+          - name: "no_new_h1_swing_high_break_before_entry"
+            type: "structural_filter"
+      short:
+        pullback_zone:
+          condition: "price_between_ema_fast_slow"
+          touch_preference: "ema_slow"
+        trigger_candle:
+          allowed_patterns:
+            - "bearish_pin_bar"
+            - "shooting_star"
+            - "bearish_engulfing"
+          must_touch:
+            - "ema_slow"
+        rsi_filter:
+          type: "hidden_bearish_divergence"
+          lookback_bars_price: 30
+          lookback_bars_rsi: 30
+        extra_filters:
+          - name: "no_new_h1_swing_low_break_before_entry"
+            type: "structural_filter"
+
+    risk_management:
+      stop_loss:
+        method: "swing_based_with_atr_buffer"
+        swing_lookback_bars: 10
+        atr_period: 14
+        atr_multiplier: 0.5
+      take_profit:
+        mode: "rr_multi_target"
+        targets:
+          - rr: 1.0
+            partial_close_pct: 0.5
+            move_sl_to_be: true
+          - rr: 1.5
+            partial_close_pct: 0.3
+          - rr: 2.0
+            partial_close_pct: 0.2
+      time_stop:
+        enabled: true
+        max_bars_in_trade: 96 # e.g. 24 hours on 15m
+
+    position_sizing:
+      method: "fixed_fractional"
+      risk_per_trade_pct: 2.0
+      max_leverage: 5
+
+  ###########################################################################
+  # STRATEGY B – SMC Liquidity Reversal
+  ###########################################################################
+  smc_liquidity_reversal:
+    enabled: true
+    label: "Strategy B – SMC Liquidity Reversal"
+    type: "reversal_smc"
+
+    market_condition_filter:
+      adx:
+        timeframe: "1h"
+        period: 14
+        max_trend_value: 40 # avoid ultra-parabolic conditions if desired
+      session_filter:
+        enabled: false # optional: London/NY only
+
+    structure:
+      higher_timeframe:
+        timeframe: "1h"
+        swing_detection:
+          method: "fractal"
+          left_bars: 2
+          right_bars: 2
+
+    entry:
+      timeframe: "15m"
+
+      long:
+        liquidity_sweep:
+          direction: "below"
+          of: "previous_h1_or_local_m15_swing_low"
+          confirmation:
+            - "fast_rejection_candle" # long lower wick, close back inside range
+        bos:
+          required: true
+          direction: "bullish"
+          ref_structure: "m15"
+          break_type: "body_close"
+        fair_value_gap:
+          enabled: true
+          direction: "bullish"
+          role: "entry_zone"
+          entry_type: "limit_or_market_on_rejection"
+        rsi_filter:
+          enabled: true
+          period: 14
+          max_value_at_entry: 60
+        invalidation:
+          - "price_close_back_below_swept_low_after_entry_zone"
+
+      short:
+        liquidity_sweep:
+          direction: "above"
+          of: "previous_h1_or_local_m15_swing_high"
+          confirmation:
+            - "fast_rejection_candle"
+        bos:
+          required: true
+          direction: "bearish"
+          ref_structure: "m15"
+          break_type: "body_close"
+        fair_value_gap:
+          enabled: true
+          direction: "bearish"
+          role: "entry_zone"
+          entry_type: "limit_or_market_on_rejection"
+        rsi_filter:
+          enabled: true
+          period: 14
+          min_value_at_entry: 40
+        invalidation:
+          - "price_close_back_above_swept_high_after_entry_zone"
+
+    risk_management:
+      stop_loss:
+        method: "beyond_liquidity_sweep_extreme"
+        buffer_ticks: 2
+      take_profit:
+        mode: "multiple_of_range"
+        rr_min: 2.0
+        rr_preferred: 3.0
+        trail:
+          enabled: true
+          trigger_rr: 1.5
+          type: "structure_trail" # trail behind new M15 swings
+      time_stop:
+        enabled: true
+        max_bars_in_trade: 64
+
+    position_sizing:
+      method: "fixed_fractional"
+      risk_per_trade_pct: 1.5
+      max_leverage: 5
+
+  ###########################################################################
+  # STRATEGY C – Range-Bound Mean Reversion
+  ###########################################################################
+  range_mean_reversion:
+    enabled: true
+    label: "Strategy C – Range Mean Reversion"
+    type: "range_mean_reversion"
+
+    market_condition_filter:
+      adx:
+        timeframe: "1h"
+        period: 14
+        max_trend_value: 25 # ADX < 25 ⇒ choppy / ranging
+      trend_filter:
+        ema_period: 200
+        allowed_price_deviation_pct: 2.0 # price staying near 200 EMA
+
+    range_definition:
+      timeframe: "1h"
+      lookback_bars: 60
+      detection_method: "swing_high_low_band"
+      min_range_height_pct: 1.0 # ignore micro ranges
+      max_range_height_pct: 8.0
+      update_on_new_extremes: true
+
+    entry:
+      timeframe: "15m"
+      indicators:
+        rsi_period: 14
+        bb_period: 20
+        bb_std_dev: 2.0
+
+      long:
+        conditions:
+          - name: "price_at_or_below_range_low"
+            type: "price_level_touch"
+          - name: "rsi_oversold"
+            indicator: "rsi"
+            threshold: 30
+            relation: "<="
+          - name: "bollinger_lower_touch"
+            indicator: "bollinger_band"
+            band: "lower"
+            relation: "touch_or_below"
+        confirmation_candle:
+          allowed_patterns:
+            - "bullish_pin_bar"
+            - "hammer"
+            - "bullish_engulfing"
+        disallow_if_breakout:
+          enabled: true
+          condition: "strong_close_below_range_low"
+
+      short:
+        conditions:
+          - name: "price_at_or_above_range_high"
+            type: "price_level_touch"
+          - name: "rsi_overbought"
+            indicator: "rsi"
+            threshold: 70
+            relation: ">="
+          - name: "bollinger_upper_touch"
+            indicator: "bollinger_band"
+            band: "upper"
+            relation: "touch_or_above"
+        confirmation_candle:
+          allowed_patterns:
+            - "bearish_pin_bar"
+            - "shooting_star"
+            - "bearish_engulfing"
+        disallow_if_breakout:
+          enabled: true
+          condition: "strong_close_above_range_high"
+
+    exit:
+      long:
+        primary:
+          mode: "two_step"
+          targets:
+            - type: "mid_range"
+              partial_close_pct: 0.5
+              move_sl_to_be: true
+            - type: "range_high"
+              partial_close_pct: 0.5
+        hard_stop:
+          method: "close_below_range_low"
+      short:
+        primary:
+          mode: "two_step"
+          targets:
+            - type: "mid_range"
+              partial_close_pct: 0.5
+              move_sl_to_be: true
+            - type: "range_low"
+              partial_close_pct: 0.5
+        hard_stop:
+          method: "close_above_range_high"
+
+    risk_management:
+      stop_loss:
+        method: "outside_range_with_buffer"
+        buffer_pct: 0.2
+      time_stop:
+        enabled: true
+        max_bars_in_trade: 80
+      max_concurrent_positions_per_pair: 1
+
+    position_sizing:
+      method: "volatility_scaled"
+      base_risk_per_trade_pct: 1.5
+      atr_period: 14
+      atr_target_fraction_of_range: 0.2
