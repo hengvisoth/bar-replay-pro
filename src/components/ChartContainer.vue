@@ -530,14 +530,6 @@ watch(
 );
 
 watch(
-  () => store.patternMarkers[props.timeframe] || [],
-  () => {
-    updateTradeMarkers();
-  },
-  { deep: true }
-);
-
-watch(
   () => tradingStore.pendingOrders,
   () => {
     updatePendingOrderLines();
@@ -678,7 +670,6 @@ function updateTradeMarkers() {
       color: marker.color,
       text: marker.text,
     })),
-    ...(store.patternMarkers[props.timeframe] || []),
   ];
   tradeMarkersPrimitive.setMarkers(markers);
 }
