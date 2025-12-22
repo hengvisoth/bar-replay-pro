@@ -239,16 +239,24 @@ export const useReplayStore = defineStore("replay", () => {
   }
 
   function updateView() {
-    // Filter ALL datasets based on the Master Clock
-    const newVisible: Record<string, Candle[]> = {};
+    const timeframesToProcess = getTimeframesToProcess();
+    const newVisible: Record<string, Candle[]> = {
+      ...visibleDatasets.value,
+    };
     const newIndicatorSeries: Record<string, Record<string, IndicatorPoint[]>> =
-      {};
+      {
+        ...indicatorSeries.value,
+      };
     const newVisibleIndicators: Record<
       string,
       Record<string, IndicatorPoint[]>
-    > = {};
+    > = {
+      ...visibleIndicators.value,
+    };
 
-    for (const [key, data] of Object.entries(datasets.value)) {
+    for (const key of timeframesToProcess) {
+      const data = datasets.value[key] || [];
+      // Filter ALL datasets based on the Master Clock
       // Binary search would be faster here for large datasets,
       // but filter is fine for <10k items
       const cutoffIndex = findVisibleEndIndex(data, currentReplayTime.value);
@@ -341,6 +349,20 @@ export const useReplayStore = defineStore("replay", () => {
         tradingStore.closePosition(position.id, latestPrice, latestM15.time);
       }
     }
+  }
+
+  function getTimeframesToProcess(): Timeframe[] {
+    const targets = new Set<Timeframe>([activeTimeframe.value]);
+
+    if (isAutoTrading.value) {
+      for (const tf of ["1h", "15m"] as const) {
+        if (availableTimeframes.value.includes(tf)) {
+          targets.add(tf);
+        }
+      }
+    }
+
+    return Array.from(targets.values());
   }
 
   function addPatternMarker(
