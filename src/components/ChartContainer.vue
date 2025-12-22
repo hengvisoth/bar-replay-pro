@@ -55,6 +55,9 @@ const paneLegendIndicators = ref<
   Array<{ label: string; value: number | null; color: string }>
 >([]);
 const savedRanges = ref<Record<string, LogicalRange | null>>({});
+const defaultRanges = ref<Record<string, LogicalRange | null>>({});
+const snapshotStatus = ref<"idle" | "copying" | "copied" | "error">("idle");
+const snapshotError = ref("");
 
 let mainChart: IChartApi | null = null;
 let paneChart: IChartApi | null = null;
@@ -71,6 +74,10 @@ let isPaneResizing = false;
 let resizeStartY = 0;
 let resizeStartRatio = 0;
 let paneResizeObserver: ResizeObserver | null = null;
+let rangeSyncFrame: number | null = null;
+let pendingRange: LogicalRange | null = null;
+let rangeSyncSource: "main" | "pane" | null = null;
+let snapshotStatusTimeout: number | null = null;
 
 const hasPaneIndicators = computed(() =>
   store.activeIndicatorDefinitions.some(
@@ -207,8 +214,7 @@ onMounted(async () => {
   const mainTimeScale = mainChart.timeScale();
   const handleMainRangeChange = (range: LogicalRange | null) => {
     if (!range || isSyncingRange) return;
-    savedRanges.value[props.timeframe] = { ...range };
-    setPaneRange(range);
+    scheduleRangeSync("main", range);
   };
   mainTimeScale.subscribeVisibleLogicalRangeChange(handleMainRangeChange);
   unsubscribeMainRange = () =>
@@ -218,8 +224,7 @@ onMounted(async () => {
     const paneTimeScale = paneChart.timeScale();
     const handlePaneRangeChange = (range: LogicalRange | null) => {
       if (!range || isSyncingRange) return;
-      savedRanges.value[props.timeframe] = { ...range };
-      setMainRange(range);
+      scheduleRangeSync("pane", range);
     };
     paneTimeScale.subscribeVisibleLogicalRangeChange(handlePaneRangeChange);
     unsubscribePaneRange = () =>
@@ -235,6 +240,7 @@ onMounted(async () => {
   }
 
   window.addEventListener("resize", handleResize);
+  window.addEventListener("keydown", handleHotkeys);
 });
 
 function isPaneIndicator(definition: IndicatorDefinition) {
@@ -270,6 +276,30 @@ function setPaneRange(range: LogicalRange) {
   isSyncingRange = true;
   paneChart.timeScale().setVisibleLogicalRange(range);
   isSyncingRange = false;
+}
+
+function scheduleRangeSync(source: "main" | "pane", range: LogicalRange) {
+  pendingRange = { ...range };
+  rangeSyncSource = source;
+
+  if (rangeSyncFrame !== null) return;
+
+  rangeSyncFrame = requestAnimationFrame(() => {
+    if (pendingRange) {
+      savedRanges.value[props.timeframe] = { ...pendingRange };
+      if (rangeSyncSource === "main") {
+        setPaneRange(pendingRange);
+      } else {
+        setMainRange(pendingRange);
+      }
+    }
+    pendingRange = null;
+    rangeSyncSource = null;
+    if (rangeSyncFrame !== null) {
+      cancelAnimationFrame(rangeSyncFrame);
+      rangeSyncFrame = null;
+    }
+  });
 }
 
 function recomputePaneHeights() {
@@ -324,6 +354,7 @@ function initChartData() {
   if (data && data.length > 0) {
     candleSeries.setData(data);
     applySavedRangeOrFit();
+    captureDefaultRange();
     updateLegendToLatest();
   }
 }
@@ -362,12 +393,14 @@ function applySavedRangeOrFit() {
   if (range) {
     setMainRange(range);
     setPaneRange(range);
+    captureDefaultRange();
   } else {
     mainChart.timeScale().fitContent();
     const fittedRange = mainChart.timeScale().getVisibleLogicalRange();
     if (fittedRange) {
       setPaneRange(fittedRange);
       savedRanges.value[props.timeframe] = { ...fittedRange };
+      captureDefaultRange(true);
     }
   }
 }
@@ -383,6 +416,7 @@ watch(
     if (isReset || isJump) {
       candleSeries.setData(newData);
       applySavedRangeOrFit();
+      captureDefaultRange(true);
     } else if (newData.length > 0) {
       const latest = newData[newData.length - 1];
       if (latest) {
@@ -519,10 +553,19 @@ onUnmounted(() => {
   if (paneChart) {
     paneChart.remove();
   }
+  if (rangeSyncFrame !== null) {
+    cancelAnimationFrame(rangeSyncFrame);
+    rangeSyncFrame = null;
+  }
+  if (snapshotStatusTimeout) {
+    clearTimeout(snapshotStatusTimeout);
+    snapshotStatusTimeout = null;
+  }
   drawingChart.value = null;
   drawingSeries.value = null;
   paneReferenceSeries.value = null;
   clickHandler = null;
+  window.removeEventListener("keydown", handleHotkeys);
 });
 
 function handleResize() {
@@ -636,6 +679,95 @@ function clearPendingOrderLines() {
   }
   orderPriceLines = {};
 }
+
+function captureDefaultRange(force = false) {
+  if (!mainChart) return;
+  if (!force && defaultRanges.value[props.timeframe]) return;
+  const currentRange = mainChart.timeScale().getVisibleLogicalRange();
+  if (currentRange) {
+    defaultRanges.value[props.timeframe] = { ...currentRange };
+  }
+}
+
+function resetViewToDefault() {
+  if (!mainChart) return;
+  const defaultRange = defaultRanges.value[props.timeframe];
+  if (defaultRange) {
+    setMainRange(defaultRange);
+    setPaneRange(defaultRange);
+    savedRanges.value[props.timeframe] = { ...defaultRange };
+  } else {
+    mainChart.timeScale().fitContent();
+    const fittedRange = mainChart.timeScale().getVisibleLogicalRange();
+    if (fittedRange) {
+      setPaneRange(fittedRange);
+      savedRanges.value[props.timeframe] = { ...fittedRange };
+      defaultRanges.value[props.timeframe] = { ...fittedRange };
+    }
+  }
+}
+
+function handleHotkeys(event: KeyboardEvent) {
+  if (event.altKey && event.key.toLowerCase() === "r") {
+    event.preventDefault();
+    resetViewToDefault();
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    copySnapshotToClipboard();
+  }
+}
+
+async function copySnapshotToClipboard() {
+  if (!mainChart || snapshotStatus.value === "copying") return;
+  snapshotStatus.value = "copying";
+  snapshotError.value = "";
+
+  try {
+    const panes: HTMLCanvasElement[] = [mainChart.takeScreenshot(true, true)];
+    if (paneChart) {
+      panes.push(paneChart.takeScreenshot(true, true));
+    }
+    const composite = document.createElement("canvas");
+    composite.width = Math.max(...panes.map((pane) => pane.width));
+    composite.height = panes.reduce((total, pane) => total + pane.height, 0);
+    const context = composite.getContext("2d");
+    if (!context) {
+      throw new Error("Unable to prepare snapshot canvas");
+    }
+    let offsetY = 0;
+    for (const pane of panes) {
+      context.drawImage(pane, 0, offsetY);
+      offsetY += pane.height;
+    }
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      composite.toBlob((created) => {
+        if (created) {
+          resolve(created);
+        } else {
+          reject(new Error("Failed to create snapshot blob"));
+        }
+      }, "image/png");
+    });
+
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    snapshotStatus.value = "copied";
+  } catch (error) {
+    console.error("Failed to copy snapshot", error);
+    snapshotStatus.value = "error";
+    snapshotError.value = "Snapshot failed. Please try again.";
+  } finally {
+    if (snapshotStatusTimeout) {
+      clearTimeout(snapshotStatusTimeout);
+    }
+    snapshotStatusTimeout = window.setTimeout(() => {
+      snapshotStatus.value = "idle";
+      snapshotError.value = "";
+    }, 2200);
+  }
+}
 </script>
 
 <template>
@@ -672,6 +804,35 @@ function clearPendingOrderLines() {
     />
 
     <div class="absolute inset-0 flex flex-col">
+      <div class="absolute right-4 top-4 z-20 flex flex-col items-end gap-2 pointer-events-none">
+        <div class="flex gap-2 pointer-events-auto">
+          <button
+            type="button"
+            class="px-3 py-1.5 text-xs font-semibold rounded border border-gray-700 bg-[#0f1729]/80 text-gray-100 hover:border-blue-500 hover:text-blue-100 transition"
+            title="Reset chart view (Alt + R)"
+            @click="resetViewToDefault"
+          >
+            Reset View
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1.5 text-xs font-semibold rounded border border-gray-700 bg-[#0f1729]/80 text-gray-100 hover:border-blue-500 hover:text-blue-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="snapshotStatus === 'copying'"
+            title="Copy snapshot to clipboard (Ctrl/Cmd + Shift + S)"
+            @click="copySnapshotToClipboard"
+          >
+            {{ snapshotStatus === "copying" ? "Copying..." : "Snapshot" }}
+          </button>
+        </div>
+        <div
+          v-if="snapshotStatus === 'copied' || snapshotStatus === 'error'"
+          class="px-2 py-1 text-[11px] rounded bg-[#0f1729]/90 border"
+          :class="snapshotStatus === 'copied' ? 'border-green-500 text-green-100' : 'border-red-500 text-red-100'"
+        >
+          {{ snapshotStatus === 'copied' ? 'Snapshot copied to clipboard' : snapshotError }}
+        </div>
+      </div>
+
       <div
         class="relative w-full"
         :style="{ height: `${mainPaneHeight}px`, minHeight: '160px' }"
