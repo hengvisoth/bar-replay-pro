@@ -29,6 +29,11 @@ import type {
 
 const HANDLE_HEIGHT = 8;
 const PANE_INDICATOR_TYPES = new Set<IndicatorType>(["atr", "adx", "rsi"]);
+type CrosshairSeries = ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+type CrosshairTarget = {
+  series: CrosshairSeries;
+  price: number;
+};
 
 const props = defineProps<{
   timeframe: string;
@@ -167,7 +172,7 @@ onMounted(async () => {
 
   mainChart.subscribeCrosshairMove((param: MouseEventParams) => {
     if (paneChart) {
-      syncCrosshairPosition(paneChart, param);
+      syncCrosshairPosition(paneChart, param, getPaneCrosshairTarget(param.time));
     }
     if (!candleSeries) return;
     if (!param.time) {
@@ -193,7 +198,7 @@ onMounted(async () => {
 
   paneChart?.subscribeCrosshairMove((param: MouseEventParams) => {
     if (mainChart) {
-      syncCrosshairPosition(mainChart, param);
+      syncCrosshairPosition(mainChart, param, getMainCrosshairTarget(param.time));
     }
     if (!param.time) {
       updateLegendToLatest();
@@ -251,17 +256,62 @@ function isPaneIndicator(definition: IndicatorDefinition) {
   return PANE_INDICATOR_TYPES.has(definition.type);
 }
 
+function toTimestamp(time: Time | undefined) {
+  return typeof time === "number" ? time : null;
+}
+
+function findLatestItemAtTime<T extends { time: number }>(
+  items: T[],
+  targetTime: number
+) {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (item && item.time <= targetTime) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function getMainCrosshairTarget(time: Time | undefined): CrosshairTarget | null {
+  if (!candleSeries) return null;
+  const timestamp = toTimestamp(time);
+  if (timestamp === null) return null;
+  const dataset = store.visibleDatasets[props.timeframe] || [];
+  const candle = findLatestItemAtTime(dataset, timestamp);
+  if (!candle) return null;
+  const price = candle.close ?? candle.open ?? candle.high ?? candle.low;
+  if (price == null) return null;
+  return { series: candleSeries, price };
+}
+
+function getPaneCrosshairTarget(time: Time | undefined): CrosshairTarget | null {
+  const timestamp = toTimestamp(time);
+  if (timestamp === null) return null;
+  const indicatorMap = store.visibleIndicators[props.timeframe] || {};
+  for (const indicator of store.activeIndicatorDefinitions) {
+    if (!isPaneIndicator(indicator)) continue;
+    const series = paneIndicatorSeries[indicator.id];
+    if (!series) continue;
+    const points = indicatorMap[indicator.id] || [];
+    const point = findLatestItemAtTime(points, timestamp);
+    if (!point) continue;
+    return { series, price: point.value };
+  }
+  return null;
+}
+
 function syncCrosshairPosition(
   targetChart: IChartApi | null,
-  param: MouseEventParams
+  param: MouseEventParams,
+  target: CrosshairTarget | null
 ) {
-  if (!targetChart || !param.point) return;
-  const setPosition = targetChart.setCrosshairPosition as unknown as (
-    x: number,
-    y: number,
-    time?: Time
-  ) => void;
-  setPosition(param.point.x, param.point.y, param.time ?? undefined);
+  if (!targetChart) return;
+  if (param.time === undefined || !target || !Number.isFinite(target.price)) {
+    targetChart.clearCrosshairPosition();
+    return;
+  }
+  targetChart.setCrosshairPosition(target.price, param.time, target.series);
 }
 
 function setMainRange(range: LogicalRange) {
