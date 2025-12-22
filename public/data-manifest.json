@@ -1,5 +1,19 @@
 {
   "ETHUSDT": {
+    "5m": [
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-01.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-02.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-03.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-04.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-05.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-06.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-07.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-08.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-09.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-10.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-11.csv",
+      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-12.csv"
+    ],
     "15m": [
       "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-01.csv",
       "data/raw/ETHUSDT/15m/2024/ETHUSDT-15m-2024-02.csv",
@@ -27,20 +41,6 @@
       "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-10.csv",
       "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-11.csv",
       "data/raw/ETHUSDT/1h/2024/ETHUSDT-1h-2024-12.csv"
-    ],
-    "5m": [
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-01.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-02.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-03.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-04.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-05.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-06.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-07.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-08.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-09.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-10.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-11.csv",
-      "data/raw/ETHUSDT/5m/2024/ETHUSDT-5m-2024-12.csv"
     ]
   },
   "SOLUSDT": {
