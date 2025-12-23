@@ -17,10 +17,17 @@ const colorInputs = ref<Record<string, HTMLInputElement | null>>({});
 
 watch(
   () => store.visibleDatasets[store.activeTimeframe],
-  (dataset) => {
-    const candle = dataset?.[dataset.length - 1];
-    if (candle) {
-      tradingStore.checkOrders(candle);
+  (dataset, previous) => {
+    if (!dataset || dataset.length === 0) return;
+    const previousLength = previous?.length ?? 0;
+    if (dataset.length <= previousLength) {
+      return;
+    }
+    for (let i = previousLength; i < dataset.length; i += 1) {
+      const candle = dataset[i];
+      if (candle) {
+        tradingStore.checkOrders(candle);
+      }
     }
   },
   { deep: true }
