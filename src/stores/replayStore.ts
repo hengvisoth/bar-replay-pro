@@ -78,7 +78,13 @@ export const useReplayStore = defineStore("replay", () => {
     }
   }
 
+  function isValidHexColor(value: string | undefined | null) {
+    if (!value) return false;
+    return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value);
+  }
+
   function setIndicatorColor(id: string, color: string) {
+    if (!isValidHexColor(color)) return;
     indicatorSettings.value = {
       ...indicatorSettings.value,
       [id]: { ...(indicatorSettings.value[id] ?? {}), color },
@@ -89,7 +95,9 @@ export const useReplayStore = defineStore("replay", () => {
   const decoratedIndicatorDefinitions = computed(() =>
     INDICATOR_DEFINITIONS.map((definition) => ({
       ...definition,
-      color: indicatorSettings.value[definition.id]?.color ?? definition.color,
+      color: isValidHexColor(indicatorSettings.value[definition.id]?.color)
+        ? indicatorSettings.value[definition.id]?.color
+        : definition.color,
     }))
   );
 
