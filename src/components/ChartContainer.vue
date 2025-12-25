@@ -62,6 +62,7 @@ const paneLegendIndicators = ref<
 >([]);
 const savedRanges = ref<Record<string, LogicalRange | null>>({});
 const defaultRanges = ref<Record<string, LogicalRange | null>>({});
+const preferredRangeSpan = ref<number | null>(null);
 const snapshotStatus = ref<"idle" | "copying" | "copied" | "error">("idle");
 const snapshotError = ref("");
 
@@ -332,6 +333,12 @@ function setPaneRange(range: LogicalRange) {
 function scheduleRangeSync(source: "main" | "pane", range: LogicalRange) {
   pendingRange = { ...range };
   rangeSyncSource = source;
+  if (source === "main") {
+    const span = Math.round(range.to - range.from);
+    if (span > 0) {
+      preferredRangeSpan.value = span;
+    }
+  }
 
   if (rangeSyncFrame !== null) return;
 
@@ -435,7 +442,56 @@ function saveCurrentRange(timeframe: string) {
   const range = mainChart.timeScale().getVisibleLogicalRange();
   if (range) {
     savedRanges.value[timeframe] = { ...range };
+    const span = Math.round(range.to - range.from);
+    if (span > 0) {
+      preferredRangeSpan.value = span;
+    }
   }
+}
+
+function getClosestIndex(dataset: Candle[], targetTime: number) {
+  if (dataset.length === 0) return 0;
+  let left = 0;
+  let right = dataset.length - 1;
+  let closest = 0;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const midTime = dataset[mid]?.time ?? 0;
+    const closestTime = dataset[closest]?.time ?? 0;
+    if (Math.abs(midTime - targetTime) < Math.abs(closestTime - targetTime)) {
+      closest = mid;
+    }
+    if (midTime === targetTime) {
+      return mid;
+    }
+    if (midTime < targetTime) {
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
+  }
+
+  return closest;
+}
+
+function applyPreferredRange() {
+  if (!mainChart) return false;
+  const dataset = store.visibleDatasets[props.timeframe] || [];
+  if (dataset.length === 0) return false;
+  const span =
+    preferredRangeSpan.value ?? Math.max(1, SNAPSHOT_CANDLE_COUNT - 1);
+  const rightOffset = mainChart.timeScale().options().rightOffset ?? 0;
+  const anchorIndex = getClosestIndex(dataset, store.currentReplayTime);
+  const to = Math.max(0, anchorIndex + rightOffset);
+  const from = Math.max(0, to - span);
+  const range: LogicalRange = { from, to };
+
+  setMainRange(range);
+  setPaneRange(range);
+  savedRanges.value[props.timeframe] = { ...range };
+  defaultRanges.value[props.timeframe] = { ...range };
+  return true;
 }
 
 function applySavedRangeOrFit() {
@@ -446,12 +502,14 @@ function applySavedRangeOrFit() {
     setPaneRange(range);
     captureDefaultRange();
   } else {
-    mainChart.timeScale().fitContent();
-    const fittedRange = mainChart.timeScale().getVisibleLogicalRange();
-    if (fittedRange) {
-      setPaneRange(fittedRange);
-      savedRanges.value[props.timeframe] = { ...fittedRange };
-      captureDefaultRange(true);
+    if (!applyPreferredRange()) {
+      mainChart.timeScale().fitContent();
+      const fittedRange = mainChart.timeScale().getVisibleLogicalRange();
+      if (fittedRange) {
+        setPaneRange(fittedRange);
+        savedRanges.value[props.timeframe] = { ...fittedRange };
+        captureDefaultRange(true);
+      }
     }
   }
 }
