@@ -29,6 +29,7 @@ import type {
 
 const HANDLE_HEIGHT = 8;
 const PANE_INDICATOR_TYPES = new Set<IndicatorType>(["atr", "adx", "rsi"]);
+const SNAPSHOT_CANDLE_COUNT = 200;
 type CrosshairSeries = ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
 type CrosshairTarget = {
   series: CrosshairSeries;
@@ -732,20 +733,22 @@ function captureDefaultRange(force = false) {
 
 function resetViewToDefault() {
   if (!mainChart) return;
-  const defaultRange = defaultRanges.value[props.timeframe];
-  if (defaultRange) {
-    setMainRange(defaultRange);
-    setPaneRange(defaultRange);
-    savedRanges.value[props.timeframe] = { ...defaultRange };
-  } else {
+  const dataset = store.visibleDatasets[props.timeframe] || [];
+  if (dataset.length === 0) {
     mainChart.timeScale().fitContent();
-    const fittedRange = mainChart.timeScale().getVisibleLogicalRange();
-    if (fittedRange) {
-      setPaneRange(fittedRange);
-      savedRanges.value[props.timeframe] = { ...fittedRange };
-      defaultRanges.value[props.timeframe] = { ...fittedRange };
-    }
+    return;
   }
+
+  const lastIndex = Math.max(0, dataset.length - 1);
+  const rightOffset = mainChart.timeScale().options().rightOffset ?? 0;
+  const to = Math.max(0, lastIndex + rightOffset);
+  const from = Math.max(0, to - (SNAPSHOT_CANDLE_COUNT - 1));
+  const snapshotRange: LogicalRange = { from, to };
+
+  setMainRange(snapshotRange);
+  setPaneRange(snapshotRange);
+  savedRanges.value[props.timeframe] = { ...snapshotRange };
+  defaultRanges.value[props.timeframe] = { ...snapshotRange };
 }
 
 function handleHotkeys(event: KeyboardEvent) {
