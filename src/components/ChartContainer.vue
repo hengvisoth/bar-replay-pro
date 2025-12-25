@@ -21,15 +21,11 @@ import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
 import ChartLegend from "./ChartLegend.vue";
 import DrawingManager from "./DrawingManager.vue";
-import type {
-  Candle,
-  IndicatorDefinition,
-  IndicatorType,
-} from "../data/types";
+import type { Candle, IndicatorDefinition, IndicatorType } from "../data/types";
 
 const HANDLE_HEIGHT = 8;
 const PANE_INDICATOR_TYPES = new Set<IndicatorType>(["atr", "adx", "rsi"]);
-const SNAPSHOT_CANDLE_COUNT = 200;
+const SNAPSHOT_CANDLE_COUNT = 100;
 type CrosshairSeries = ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
 type CrosshairTarget = {
   series: CrosshairSeries;
@@ -91,7 +87,9 @@ const hasPaneIndicators = computed(() =>
     (def) => isPaneIndicator(def) && store.isIndicatorActive(def.id)
   )
 );
-const activeDatasetForTimeframe = computed(() => store.visibleDatasets[props.timeframe] || []);
+const activeDatasetForTimeframe = computed(
+  () => store.visibleDatasets[props.timeframe] || []
+);
 
 onMounted(async () => {
   await nextTick();
@@ -111,7 +109,10 @@ onMounted(async () => {
   if (paneChartContainer.value) {
     paneChart = createChart(paneChartContainer.value, {
       layout: { background: { color: "#0d111d" }, textColor: "#d1d4dc" },
-      grid: { vertLines: { color: "#1f2937" }, horzLines: { color: "#1f2937" } },
+      grid: {
+        vertLines: { color: "#1f2937" },
+        horzLines: { color: "#1f2937" },
+      },
       width: paneChartContainer.value.clientWidth,
       height: paneChartContainer.value.clientHeight,
       timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 5 },
@@ -174,16 +175,20 @@ onMounted(async () => {
 
   mainChart.subscribeCrosshairMove((param: MouseEventParams) => {
     if (paneChart) {
-      syncCrosshairPosition(paneChart, param, getPaneCrosshairTarget(param.time));
+      syncCrosshairPosition(
+        paneChart,
+        param,
+        getPaneCrosshairTarget(param.time)
+      );
     }
     if (!candleSeries) return;
     if (!param.time) {
       updateLegendToLatest();
       return;
     }
-    const data = param.seriesData.get(
-      candleSeries
-    ) as SeriesDataItemTypeMap["Candlestick"] | undefined;
+    const data = param.seriesData.get(candleSeries) as
+      | SeriesDataItemTypeMap["Candlestick"]
+      | undefined;
     if (data) {
       hoveredCandle.value = { ...data } as Candle;
     } else {
@@ -200,7 +205,11 @@ onMounted(async () => {
 
   paneChart?.subscribeCrosshairMove((param: MouseEventParams) => {
     if (mainChart) {
-      syncCrosshairPosition(mainChart, param, getMainCrosshairTarget(param.time));
+      syncCrosshairPosition(
+        mainChart,
+        param,
+        getMainCrosshairTarget(param.time)
+      );
     }
     if (!param.time) {
       updateLegendToLatest();
@@ -275,7 +284,9 @@ function findLatestItemAtTime<T extends { time: number }>(
   return null;
 }
 
-function getMainCrosshairTarget(time: Time | undefined): CrosshairTarget | null {
+function getMainCrosshairTarget(
+  time: Time | undefined
+): CrosshairTarget | null {
   if (!candleSeries) return null;
   const timestamp = toTimestamp(time);
   if (timestamp === null) return null;
@@ -287,7 +298,9 @@ function getMainCrosshairTarget(time: Time | undefined): CrosshairTarget | null 
   return { series: candleSeries, price };
 }
 
-function getPaneCrosshairTarget(time: Time | undefined): CrosshairTarget | null {
+function getPaneCrosshairTarget(
+  time: Time | undefined
+): CrosshairTarget | null {
   const timestamp = toTimestamp(time);
   if (timestamp === null) return null;
   const indicatorMap = store.visibleIndicators[props.timeframe] || {};
@@ -695,8 +708,16 @@ function updateIndicatorLegendValues(targetTime?: number) {
     store.isIndicatorActive(definition.id)
   );
 
-  const overlayValues: Array<{ label: string; value: number | null; color: string }> = [];
-  const paneValues: Array<{ label: string; value: number | null; color: string }> = [];
+  const overlayValues: Array<{
+    label: string;
+    value: number | null;
+    color: string;
+  }> = [];
+  const paneValues: Array<{
+    label: string;
+    value: number | null;
+    color: string;
+  }> = [];
 
   for (const definition of activeIndicators) {
     const points = indicatorMap[definition.id] || [];
@@ -736,11 +757,15 @@ function updateTradeMarkers() {
 function updatePendingOrderLines() {
   if (!candleSeries) return;
   const activeOrders = tradingStore.pendingOrders;
-  const existingIds = new Set(Object.keys(orderPriceLines).map((id) => Number(id)));
+  const existingIds = new Set(
+    Object.keys(orderPriceLines).map((id) => Number(id))
+  );
 
   for (const order of activeOrders) {
     const color = order.side === "long" ? "#26a69a" : "#ef5350";
-    const label = `${order.side === "long" ? "Buy" : "Sell"} ${order.orderType.toUpperCase()}`;
+    const label = `${
+      order.side === "long" ? "Buy" : "Sell"
+    } ${order.orderType.toUpperCase()}`;
     const lineOptions: CreatePriceLineOptions = {
       price: order.price,
       color,
@@ -815,7 +840,11 @@ function handleHotkeys(event: KeyboardEvent) {
     resetViewToDefault();
     return;
   }
-  if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "s") {
+  if (
+    (event.metaKey || event.ctrlKey) &&
+    event.shiftKey &&
+    event.key.toLowerCase() === "s"
+  ) {
     event.preventDefault();
     copySnapshotToClipboard();
   }
@@ -843,6 +872,30 @@ async function copySnapshotToClipboard() {
       context.drawImage(pane, 0, offsetY);
       offsetY += pane.height;
     }
+    const timeframeLabel = `Timeframe: ${props.timeframe}`;
+    const labelPaddingX = 12;
+    const labelPaddingY = 8;
+    const labelX = 12;
+    const labelY = 12;
+    const labelFontSize = 18;
+    context.save();
+    context.font = `600 ${labelFontSize}px sans-serif`;
+    context.textBaseline = "top";
+    const labelMetrics = context.measureText(timeframeLabel);
+    const labelWidth = Math.ceil(labelMetrics.width) + labelPaddingX * 2;
+    const labelHeight = labelFontSize + labelPaddingY * 2;
+    context.fillStyle = "rgba(15, 23, 41, 0.85)";
+    context.fillRect(labelX, labelY, labelWidth, labelHeight);
+    context.strokeStyle = "rgba(59, 130, 246, 0.7)";
+    context.lineWidth = 1;
+    context.strokeRect(labelX, labelY, labelWidth, labelHeight);
+    context.fillStyle = "#e2e8f0";
+    context.fillText(
+      timeframeLabel,
+      labelX + labelPaddingX,
+      labelY + labelPaddingY
+    );
+    context.restore();
 
     const blob = await new Promise<Blob>((resolve, reject) => {
       composite.toBlob((created) => {
@@ -876,13 +929,17 @@ async function copySnapshotToClipboard() {
   <div
     ref="paneRoot"
     class="relative w-full h-full bg-[#10141f] overflow-hidden border-r border-gray-800"
-    :class="store.isSelectingReplay ? 'cursor-crosshair ring-1 ring-blue-500/50' : ''"
+    :class="
+      store.isSelectingReplay ? 'cursor-crosshair ring-1 ring-blue-500/50' : ''
+    "
   >
     <div
       v-if="store.isSelectingReplay"
       class="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
     >
-      <div class="px-3 py-2 bg-blue-600/90 text-xs font-semibold rounded shadow-lg">
+      <div
+        class="px-3 py-2 bg-blue-600/90 text-xs font-semibold rounded shadow-lg"
+      >
         Click a candle to start replay
       </div>
     </div>
@@ -906,7 +963,9 @@ async function copySnapshotToClipboard() {
     />
 
     <div class="absolute inset-0 flex flex-col">
-      <div class="absolute right-4 top-4 z-20 flex flex-col items-end gap-2 pointer-events-none">
+      <div
+        class="absolute right-4 top-4 z-20 flex flex-col items-end gap-2 pointer-events-none"
+      >
         <div class="flex gap-2 pointer-events-auto">
           <button
             type="button"
@@ -929,9 +988,17 @@ async function copySnapshotToClipboard() {
         <div
           v-if="snapshotStatus === 'copied' || snapshotStatus === 'error'"
           class="px-2 py-1 text-[11px] rounded bg-[#0f1729]/90 border"
-          :class="snapshotStatus === 'copied' ? 'border-green-500 text-green-100' : 'border-red-500 text-red-100'"
+          :class="
+            snapshotStatus === 'copied'
+              ? 'border-green-500 text-green-100'
+              : 'border-red-500 text-red-100'
+          "
         >
-          {{ snapshotStatus === 'copied' ? 'Snapshot copied to clipboard' : snapshotError }}
+          {{
+            snapshotStatus === "copied"
+              ? "Snapshot copied to clipboard"
+              : snapshotError
+          }}
         </div>
       </div>
 
@@ -947,7 +1014,11 @@ async function copySnapshotToClipboard() {
           class="h-2 bg-gray-800/80 hover:bg-gray-700/80 flex items-center justify-center cursor-row-resize select-none"
           @mousedown="beginPaneResize"
         >
-          <svg class="w-4 h-1 text-gray-500" viewBox="0 0 16 4" fill="currentColor">
+          <svg
+            class="w-4 h-1 text-gray-500"
+            viewBox="0 0 16 4"
+            fill="currentColor"
+          >
             <circle cx="2" cy="2" r="1" />
             <circle cx="8" cy="2" r="1" />
             <circle cx="14" cy="2" r="1" />
