@@ -43,13 +43,24 @@ function onDateChange(event: Event) {
   <div
     class="w-full h-14 bg-[#10141f] border-t border-gray-800 flex items-center px-4 gap-4 z-30"
   >
-    <button
-      @click="store.togglePlay"
-      class="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-500 text-white transition-colors shrink-0"
-    >
-      <span v-if="!store.isPlaying">▶</span>
-      <span v-else>⏸</span>
-    </button>
+    <div class="flex items-center gap-2 shrink-0">
+      <button
+        @click="store.togglePlay"
+        class="flex items-center justify-center w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+        title="Play/Pause"
+      >
+        <span v-if="!store.isPlaying">▶</span>
+        <span v-else>⏸</span>
+      </button>
+      <button
+        @click="store.stepForward"
+        class="flex items-center justify-center w-10 h-10 rounded-full border border-gray-700 text-gray-200 hover:border-blue-500 hover:text-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        title="Next candle"
+        :disabled="store.masterIndex >= store.totalCandles - 1"
+      >
+        ⏭
+      </button>
+    </div>
 
     <div class="flex-1 flex flex-col justify-center">
       <input
