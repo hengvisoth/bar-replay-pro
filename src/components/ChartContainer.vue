@@ -26,6 +26,10 @@ import type { Candle, IndicatorDefinition, IndicatorType } from "../data/types";
 const HANDLE_HEIGHT = 8;
 const PANE_INDICATOR_TYPES = new Set<IndicatorType>(["atr", "adx", "rsi"]);
 const SNAPSHOT_CANDLE_COUNT = 100;
+const TIMEFRAME_DEFAULT_RANGE = {
+  "1h": { min: 120, max: 168 },
+  "15m": { min: 195, max: 250 },
+} as const;
 type CrosshairSeries = ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
 type CrosshairTarget = {
   series: CrosshairSeries;
@@ -96,6 +100,8 @@ onMounted(async () => {
   recomputePaneHeights();
   if (!mainChartContainer.value) return;
 
+  console.log("Chart Container Height ", mainChartContainer.value.clientHeight);
+  console.log("Chart Container Width ", mainChartContainer.value.clientWidth);
   mainChart = createChart(mainChartContainer.value, {
     layout: { background: { color: "#10141f" }, textColor: "#d1d4dc" },
     grid: { vertLines: { color: "#1f2937" }, horzLines: { color: "#1f2937" } },
@@ -492,8 +498,9 @@ function applyPreferredRange() {
   if (!mainChart) return false;
   const dataset = store.visibleDatasets[props.timeframe] || [];
   if (dataset.length === 0) return false;
+  const defaultCount = getDefaultCandleCount(props.timeframe, dataset.length);
   const span =
-    preferredRangeSpan.value ?? Math.max(1, SNAPSHOT_CANDLE_COUNT - 1);
+    preferredRangeSpan.value ?? Math.max(1, defaultCount - 1);
   const rightOffset = mainChart.timeScale().options().rightOffset ?? 0;
   const anchorIndex = getClosestIndex(dataset, store.currentReplayTime);
   const to = Math.max(0, anchorIndex + rightOffset);
@@ -825,13 +832,21 @@ function resetViewToDefault() {
   const lastIndex = Math.max(0, dataset.length - 1);
   const rightOffset = mainChart.timeScale().options().rightOffset ?? 0;
   const to = Math.max(0, lastIndex + rightOffset);
-  const from = Math.max(0, to - (SNAPSHOT_CANDLE_COUNT - 1));
+  const defaultCount = getDefaultCandleCount(props.timeframe, dataset.length);
+  const from = Math.max(0, to - (defaultCount - 1));
   const snapshotRange: LogicalRange = { from, to };
 
   setMainRange(snapshotRange);
   setPaneRange(snapshotRange);
   savedRanges.value[props.timeframe] = { ...snapshotRange };
   defaultRanges.value[props.timeframe] = { ...snapshotRange };
+}
+
+function getDefaultCandleCount(timeframe: string, datasetLength: number) {
+  const limits = TIMEFRAME_DEFAULT_RANGE[timeframe as keyof typeof TIMEFRAME_DEFAULT_RANGE];
+  if (!limits) return SNAPSHOT_CANDLE_COUNT;
+  const capped = datasetLength > 0 ? Math.min(limits.max, datasetLength) : limits.max;
+  return Math.max(limits.min, capped);
 }
 
 function handleHotkeys(event: KeyboardEvent) {
