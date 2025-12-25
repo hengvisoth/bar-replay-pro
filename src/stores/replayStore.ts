@@ -370,6 +370,19 @@ export const useReplayStore = defineStore("replay", () => {
     updateView();
   }
 
+  function stepForward() {
+    const active = datasets.value[activeTimeframe.value];
+    if (!active || active.length === 0) return;
+    const currentIndex = findVisibleEndIndex(
+      active,
+      currentReplayTime.value
+    );
+    const nextIndex = currentIndex + 1;
+    if (!active[nextIndex]) return;
+    currentReplayTime.value = active[nextIndex].time;
+    updateView();
+  }
+
   let intervalId: ReturnType<typeof setInterval> | null = null;
 
   function clampReplayTime() {
@@ -517,6 +530,7 @@ export const useReplayStore = defineStore("replay", () => {
     togglePlay,
     jumpTo,
     jumpToTimestamp,
+    stepForward,
     setSymbol,
     toggleReplaySelection,
     setReplayStart,
