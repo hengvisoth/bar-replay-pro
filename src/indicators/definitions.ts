@@ -1,13 +1,25 @@
 import type { IndicatorDefinition } from "../data/types";
 import { INDICATOR_IDS } from "./indicatorIds";
 
+export const INDICATOR_DEFAULT_COLORS = {
+  [INDICATOR_IDS.SMA_14]: "#f0b90b",
+  [INDICATOR_IDS.SMA_50]: "#1abc9c",
+  [INDICATOR_IDS.EMA_20]: "#f472b6",
+  [INDICATOR_IDS.EMA_50]: "#ec4899",
+  [INDICATOR_IDS.EMA_95]: "#0ea5e9",
+  [INDICATOR_IDS.EMA_200]: "#d946ef",
+  [INDICATOR_IDS.ATR_14]: "#fb923c",
+  [INDICATOR_IDS.RSI_14]: "#a78bfa",
+  [INDICATOR_IDS.ADX_14]: "#38bdf8",
+} as const;
+
 export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
   {
     id: INDICATOR_IDS.SMA_14,
     label: "SMA 14",
     type: "sma",
     period: 14,
-    color: "#f0b90b",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.SMA_14],
     defaultActive: false,
     overlay: true,
   },
@@ -16,7 +28,7 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     label: "SMA 50",
     type: "sma",
     period: 50,
-    color: "#1abc9c",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.SMA_50],
     defaultActive: false,
     overlay: true,
   },
@@ -25,7 +37,7 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     label: "EMA 20",
     type: "ema",
     period: 20,
-    color: "#f472b6",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.EMA_20],
     overlay: true,
   },
   {
@@ -33,7 +45,7 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     label: "EMA 50",
     type: "ema",
     period: 50,
-    color: "#ec4899",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.EMA_50],
     overlay: true,
   },
   {
@@ -41,7 +53,7 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     label: "EMA 200",
     type: "ema",
     period: 200,
-    color: "#d946ef",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.EMA_200],
     overlay: true,
   },
   {
@@ -49,7 +61,7 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     label: "EMA 95",
     type: "ema",
     period: 95,
-    color: "#0ea5e9",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.EMA_95],
     overlay: true,
   },
   {
@@ -57,7 +69,7 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     label: "ATR 14",
     type: "atr",
     period: 14,
-    color: "#fb923c",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.ATR_14],
     lineWidth: 2,
     overlay: false,
   },
@@ -66,7 +78,7 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     label: "RSI 14",
     type: "rsi",
     period: 14,
-    color: "#a78bfa",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.RSI_14],
     lineWidth: 2,
     overlay: false,
   },
@@ -75,7 +87,7 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     label: "ADX 14",
     type: "adx",
     period: 14,
-    color: "#38bdf8",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.ADX_14],
     lineWidth: 2,
     overlay: false,
   },
