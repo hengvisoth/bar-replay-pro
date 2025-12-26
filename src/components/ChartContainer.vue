@@ -103,7 +103,7 @@ onMounted(async () => {
   console.log("Chart Container Height ", mainChartContainer.value.clientHeight);
   console.log("Chart Container Width ", mainChartContainer.value.clientWidth);
   mainChart = createChart(mainChartContainer.value, {
-    layout: { background: { color: "#10141f" }, textColor: "#d1d4dc" },
+    layout: { background: { color: "#050505" }, textColor: "#d1d4dc" },
     grid: { vertLines: { color: "#1f2937" }, horzLines: { color: "#1f2937" } },
     width: mainChartContainer.value.clientWidth,
     height: mainChartContainer.value.clientHeight,
@@ -114,7 +114,7 @@ onMounted(async () => {
 
   if (paneChartContainer.value) {
     paneChart = createChart(paneChartContainer.value, {
-      layout: { background: { color: "#0d111d" }, textColor: "#d1d4dc" },
+      layout: { background: { color: "#050505" }, textColor: "#d1d4dc" },
       grid: {
         vertLines: { color: "#1f2937" },
         horzLines: { color: "#1f2937" },
@@ -899,7 +899,7 @@ async function copySnapshotToClipboard() {
     const labelMetrics = context.measureText(timeframeLabel);
     const labelWidth = Math.ceil(labelMetrics.width) + labelPaddingX * 2;
     const labelHeight = labelFontSize + labelPaddingY * 2;
-    context.fillStyle = "rgba(15, 23, 41, 0.85)";
+    context.fillStyle = "rgba(5, 5, 5, 0.85)";
     context.fillRect(labelX, labelY, labelWidth, labelHeight);
     context.strokeStyle = "rgba(59, 130, 246, 0.7)";
     context.lineWidth = 1;
@@ -943,7 +943,7 @@ async function copySnapshotToClipboard() {
 <template>
   <div
     ref="paneRoot"
-    class="relative w-full h-full bg-[#10141f] overflow-hidden border-r border-gray-800"
+    class="relative w-full h-full bg-[#050505] overflow-hidden border-r border-gray-800"
     :class="
       store.isSelectingReplay ? 'cursor-crosshair ring-1 ring-blue-500/50' : ''
     "
@@ -984,7 +984,7 @@ async function copySnapshotToClipboard() {
         <div class="flex gap-2 pointer-events-auto">
           <button
             type="button"
-            class="px-3 py-1.5 text-xs font-semibold rounded border border-gray-700 bg-[#0f1729]/80 text-gray-100 hover:border-blue-500 hover:text-blue-100 transition"
+            class="px-3 py-1.5 text-xs font-semibold rounded border border-gray-700 bg-[#050505]/80 text-gray-100 hover:border-blue-500 hover:text-blue-100 transition"
             title="Reset chart view (Alt + R)"
             @click="resetViewToDefault"
           >
@@ -992,7 +992,7 @@ async function copySnapshotToClipboard() {
           </button>
           <button
             type="button"
-            class="px-3 py-1.5 text-xs font-semibold rounded border border-gray-700 bg-[#0f1729]/80 text-gray-100 hover:border-blue-500 hover:text-blue-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            class="px-3 py-1.5 text-xs font-semibold rounded border border-gray-700 bg-[#050505]/80 text-gray-100 hover:border-blue-500 hover:text-blue-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="snapshotStatus === 'copying'"
             title="Copy snapshot to clipboard (Ctrl/Cmd + Shift + S)"
             @click="copySnapshotToClipboard"
@@ -1002,7 +1002,7 @@ async function copySnapshotToClipboard() {
         </div>
         <div
           v-if="snapshotStatus === 'copied' || snapshotStatus === 'error'"
-          class="px-2 py-1 text-[11px] rounded bg-[#0f1729]/90 border"
+          class="px-2 py-1 text-[11px] rounded bg-[#050505]/90 border"
           :class="
             snapshotStatus === 'copied'
               ? 'border-green-500 text-green-100'
@@ -1047,7 +1047,7 @@ async function copySnapshotToClipboard() {
           <div ref="paneChartContainer" class="w-full h-full"></div>
           <div
             v-if="paneLegendIndicators.length"
-            class="absolute left-3 bottom-3 z-10 pointer-events-none bg-[#0d111d]/80 border border-gray-700 rounded px-3 py-2 text-[11px] font-mono text-gray-200 backdrop-blur-sm shadow-lg"
+            class="absolute left-3 bottom-3 z-10 pointer-events-none bg-[#050505]/80 border border-gray-700 rounded px-3 py-2 text-[11px] font-mono text-gray-200 backdrop-blur-sm shadow-lg"
           >
             <div class="flex flex-wrap gap-3">
               <div
