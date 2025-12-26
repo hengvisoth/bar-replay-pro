@@ -354,7 +354,7 @@ watch(orderMode, (mode) => {
 </script>
 
 <template>
-  <div class="bg-[#0b111e] flex flex-col text-sm h-full w-full">
+  <div class="bg-[#050505] flex flex-col text-sm h-full w-full">
     <div class="p-4 border-b border-gray-800 space-y-3">
       <div class="flex justify-between text-sm text-gray-300">
         <span>Cash</span>
@@ -382,7 +382,7 @@ watch(orderMode, (mode) => {
           type="number"
           min="1"
           step="1"
-          class="flex-1 rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+          class="flex-1 rounded bg-[#050505] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
           placeholder="Order Margin (USDT)"
         />
         <span class="text-sm text-gray-400">USDT</span>
@@ -390,7 +390,7 @@ watch(orderMode, (mode) => {
       <div class="flex items-center justify-between text-sm text-gray-300">
         <span>Leverage</span>
         <select
-          class="bg-[#111a2c] border border-gray-700 rounded px-2 py-1 text-gray-100 text-sm"
+          class="bg-[#050505] border border-gray-700 rounded px-2 py-1 text-gray-100 text-sm"
           :value="tradingStore.leverage"
           @change="handleLeverageChange"
         >
@@ -452,7 +452,7 @@ watch(orderMode, (mode) => {
           type="number"
           min="0"
           step="0.01"
-          class="w-full rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+          class="w-full rounded bg-[#050505] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
           placeholder="Entry Price"
         />
       </div>
@@ -463,7 +463,7 @@ watch(orderMode, (mode) => {
             type="number"
             min="0"
             step="0.01"
-            class="w-full rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+            class="w-full rounded bg-[#050505] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
             placeholder="SL Price"
           />
           <span class="text-sm text-gray-400">SL</span>
@@ -474,7 +474,7 @@ watch(orderMode, (mode) => {
             type="number"
             min="0"
             step="0.01"
-            class="w-full rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+            class="w-full rounded bg-[#050505] border border-gray-700 px-2 py-1 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
             placeholder="TP Price"
           />
           <span class="text-sm text-gray-400">TP</span>
@@ -554,7 +554,7 @@ watch(orderMode, (mode) => {
           <div
             v-for="position in enrichedPositions"
             :key="position.id"
-            class="bg-[#10192f] rounded p-2 text-sm text-gray-200"
+            class="bg-[#050505] rounded p-2 text-sm text-gray-200"
           >
             <div class="flex justify-between">
               <span>Side</span>
@@ -614,7 +614,7 @@ watch(orderMode, (mode) => {
           <div
             v-for="order in tradingStore.pendingOrders"
             :key="order.id"
-            class="bg-[#10192f] rounded p-2 text-sm text-gray-200"
+            class="bg-[#050505] rounded p-2 text-sm text-gray-200"
           >
             <div class="flex justify-between">
               <span>Side / Type</span>
@@ -665,7 +665,7 @@ watch(orderMode, (mode) => {
           <div
             v-for="trade in tradingStore.tradeHistory"
             :key="trade.exitTime + '-' + trade.id"
-            class="bg-[#10192f] rounded p-2 text-sm text-gray-200"
+            class="bg-[#050505] rounded p-2 text-sm text-gray-200"
           >
             <div class="flex justify-between">
               <span>Side</span>
@@ -710,7 +710,7 @@ watch(orderMode, (mode) => {
         <h3 class="text-sm uppercase tracking-widest text-gray-400 mb-2">
           Session Settings
         </h3>
-        <div class="bg-[#10192f] rounded p-2 text-sm text-gray-200 space-y-3">
+        <div class="bg-[#050505] rounded p-2 text-sm text-gray-200 space-y-3">
           <div class="flex justify-between items-center">
             <label for="starting-balance" class="text-gray-300"
               >Starting Balance (USD)</label
@@ -721,7 +721,7 @@ watch(orderMode, (mode) => {
               type="number"
               min="1"
               step="100"
-              class="w-32 rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-right text-gray-100 focus:outline-none focus:border-blue-500"
+              class="w-32 rounded bg-[#050505] border border-gray-700 px-2 py-1 text-sm text-right text-gray-100 focus:outline-none focus:border-blue-500"
             />
           </div>
           <div class="flex justify-between items-center">
@@ -735,7 +735,7 @@ watch(orderMode, (mode) => {
               min="10"
               max="1000"
               step="10"
-              class="w-32 rounded bg-[#111a2c] border border-gray-700 px-2 py-1 text-sm text-right text-gray-100 focus:outline-none focus:border-blue-500"
+              class="w-32 rounded bg-[#050505] border border-gray-700 px-2 py-1 text-sm text-right text-gray-100 focus:outline-none focus:border-blue-500"
             />
           </div>
           <button
