@@ -22,7 +22,7 @@ const toggleExpanded = () => {
 
 <template>
   <div
-    class="absolute top-3 left-3 z-20 font-mono text-xs pointer-events-none select-none bg-[#10141f]/60 rounded backdrop-blur-sm shadow-lg"
+    class="absolute top-3 left-3 z-20 font-mono text-xs pointer-events-none select-none bg-[#050505]/60 rounded backdrop-blur-sm shadow-lg"
     :class="
       isExpanded
         ? 'p-1 flex flex-wrap gap-x-3'
