@@ -11,7 +11,7 @@ function selectTimeframe(tf: Timeframe) {
 
 <template>
   <div
-    class="flex items-center gap-1 rounded border border-gray-800 bg-[#0f172a]/70 px-1 py-1 shadow-inner"
+    class="flex items-center gap-1 rounded border border-gray-800 bg-[#050505]/70 px-1 py-1 shadow-inner"
   >
     <button
       v-for="tf in store.availableTimeframes"
