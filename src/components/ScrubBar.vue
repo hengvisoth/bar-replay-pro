@@ -41,7 +41,7 @@ function onDateChange(event: Event) {
 
 <template>
   <div
-    class="w-full h-14 bg-[#10141f] border-t border-gray-800 flex items-center px-4 gap-4 z-30"
+    class="w-full h-14 bg-[#050505] border-t border-gray-800 flex items-center px-4 gap-4 z-30"
   >
     <div class="flex items-center gap-2 shrink-0">
       <button
@@ -113,7 +113,7 @@ function onDateChange(event: Event) {
           type="datetime-local"
           :value="dateInputValue"
           @change="onDateChange"
-          class="bg-[#0f172a] border border-gray-700 rounded px-2 py-1 text-xs text-gray-100 focus:outline-none focus:border-blue-500"
+          class="bg-[#050505] border border-gray-700 rounded px-2 py-1 text-xs text-gray-100 focus:outline-none focus:border-blue-500"
         />
       </div>
     </div>
