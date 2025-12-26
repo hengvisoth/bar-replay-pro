@@ -157,7 +157,7 @@ function drawingHasFill(value: DrawingShape | null): value is DrawingShape & {
 <template>
   <div
     v-if="drawing"
-    class="absolute top-4 right-4 w-72 bg-[#0f172a]/90 border border-gray-700 rounded-xl shadow-2xl p-4 text-xs text-gray-200 space-y-3 backdrop-blur"
+    class="absolute top-4 right-4 w-72 bg-[#050505]/90 border border-gray-700 rounded-xl shadow-2xl p-4 text-xs text-gray-200 space-y-3 backdrop-blur"
   >
     <div class="flex items-center justify-between">
       <div>
