@@ -102,7 +102,7 @@ function removeTemplate(templateId: string) {
   <div class="absolute left-3 top-20 z-30 flex flex-col gap-3">
     <div
       v-if="drawingStore.favoriteTools.length"
-      class="flex gap-1 px-2 py-1 bg-[#0f172a]/80 border border-gray-700 rounded-full shadow pointer-events-auto"
+      class="flex gap-1 px-2 py-1 bg-[#050505]/80 border border-gray-700 rounded-full shadow pointer-events-auto"
     >
       <button
         v-for="tool in drawingStore.favoriteTools"
@@ -121,7 +121,7 @@ function removeTemplate(templateId: string) {
 
     <div
       v-if="drawingStore.toolbarVisible"
-      class="w-64 bg-[#050b16]/90 border border-gray-800 rounded-2xl shadow-2xl backdrop-blur p-4 text-xs text-gray-200 space-y-4 pointer-events-auto"
+      class="w-64 bg-[#050505]/90 border border-gray-800 rounded-2xl shadow-2xl backdrop-blur p-4 text-xs text-gray-200 space-y-4 pointer-events-auto"
     >
       <div class="flex items-center justify-between">
         <div>
@@ -241,7 +241,7 @@ function removeTemplate(templateId: string) {
 
     <button
       v-else
-      class="px-3 py-1.5 rounded-full border border-gray-600 bg-[#050b16]/80 text-gray-200 text-xs pointer-events-auto"
+      class="px-3 py-1.5 rounded-full border border-gray-600 bg-[#050505]/80 text-gray-200 text-xs pointer-events-auto"
       @click="toggleToolbar"
     >
       Show Drawing Tools
