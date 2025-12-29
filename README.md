@@ -14,5 +14,5 @@ To add more data to the project:
 
 ```bash
 cd ./scripts/
-node ./generate-manifest.js
+node ./generate-manifest.jss
 ```
