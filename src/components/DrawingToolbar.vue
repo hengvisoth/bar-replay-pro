@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import {
-  TOOL_DEFINITIONS,
-  useDrawingStore,
-} from "../stores/drawingStore";
+import { TOOL_DEFINITIONS, useDrawingStore } from "../stores/drawingStore";
 
 const drawingStore = useDrawingStore();
 const strokeColor = ref("#0ea5e9");
@@ -24,7 +21,10 @@ watch(
   { immediate: true, deep: true }
 );
 
-const magnetOptions: Array<{ label: string; value: "off" | "weak" | "strong" }> = [
+const magnetOptions: Array<{
+  label: string;
+  value: "off" | "weak" | "strong";
+}> = [
   { label: "Off", value: "off" },
   { label: "Weak", value: "weak" },
   { label: "Strong", value: "strong" },
@@ -125,31 +125,41 @@ function removeTemplate(templateId: string) {
     >
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-[11px] uppercase tracking-[0.3em] text-gray-500">Tools</p>
+          <p class="text-[11px] uppercase tracking-[0.3em] text-gray-500">
+            Tools
+          </p>
           <p class="text-sm font-semibold text-white">Drawing Toolbar</p>
         </div>
-        <button class="text-gray-400 hover:text-white" @click="toggleToolbar">Hide</button>
+        <button class="text-gray-400 hover:text-white" @click="toggleToolbar">
+          Hide
+        </button>
       </div>
 
       <div class="flex items-center gap-2">
-        <label class="text-[11px] uppercase tracking-wider text-gray-500">Magnet</label>
+        <label class="text-[11px] uppercase tracking-wider text-gray-500"
+          >Magnet</label
+        >
         <select
           class="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1"
           :value="drawingStore.magnetMode"
           @change="handleMagnetChange"
         >
-          <option v-for="option in magnetOptions" :key="option.value" :value="option.value">
+          <option
+            v-for="option in magnetOptions"
+            :key="option.value"
+            :value="option.value"
+          >
             {{ option.label }}
           </option>
         </select>
       </div>
 
       <div class="grid grid-cols-2 gap-2">
-        <button
+        <div
           v-for="tool in TOOL_DEFINITIONS"
           :key="tool.id"
           :class="[
-            'flex items-center justify-between px-3 py-2 rounded border text-xs font-semibold transition-colors',
+            'flex items-center justify-between px-3 py-2 rounded border text-xs font-semibold transition-colors cursor-pointer',
             drawingStore.activeTool === tool.id
               ? 'bg-blue-600/80 border-blue-500 text-white'
               : 'border-gray-700 text-gray-200 hover:border-blue-500/70',
@@ -163,27 +173,47 @@ function removeTemplate(templateId: string) {
           <button
             type="button"
             class="text-[13px]"
-            :class="drawingStore.favorites.has(tool.id) ? 'text-yellow-400' : 'text-gray-500'"
+            :class="
+              drawingStore.favorites.has(tool.id)
+                ? 'text-yellow-400'
+                : 'text-gray-500'
+            "
             @click="(event) => toggleFavorite(event, tool.id)"
           >
             ★
           </button>
-        </button>
+        </div>
       </div>
 
       <div class="border rounded-xl border-gray-800 p-3 space-y-2">
-        <p class="text-[11px] uppercase tracking-wider text-gray-500">Defaults</p>
+        <p class="text-[11px] uppercase tracking-wider text-gray-500">
+          Defaults
+        </p>
         <label class="flex flex-col gap-1">
           <span>Stroke Color</span>
-          <input type="color" :value="strokeColor" @input="handleStrokeColorChange" />
+          <input
+            type="color"
+            :value="strokeColor"
+            @input="handleStrokeColorChange"
+          />
         </label>
         <label class="flex flex-col gap-1">
           <span>Stroke Width</span>
-          <input type="range" min="1" max="10" :value="strokeWidth" @input="handleStrokeWidthChange" />
+          <input
+            type="range"
+            min="1"
+            max="10"
+            :value="strokeWidth"
+            @input="handleStrokeWidthChange"
+          />
         </label>
         <label class="flex flex-col gap-1">
           <span>Fill Color</span>
-          <input type="color" :value="fillColor" @input="handleFillColorChange" />
+          <input
+            type="color"
+            :value="fillColor"
+            @input="handleFillColorChange"
+          />
         </label>
       </div>
 
@@ -218,7 +248,9 @@ function removeTemplate(templateId: string) {
       </div>
 
       <div v-if="drawingStore.templates.length" class="space-y-2">
-        <p class="text-[11px] uppercase tracking-wider text-gray-500">Templates</p>
+        <p class="text-[11px] uppercase tracking-wider text-gray-500">
+          Templates
+        </p>
         <div class="flex flex-col gap-2">
           <div
             v-for="template in drawingStore.templates"
@@ -227,10 +259,16 @@ function removeTemplate(templateId: string) {
           >
             <span class="text-xs font-semibold">{{ template.name }}</span>
             <div class="flex gap-2">
-              <button class="text-blue-300 hover:text-white" @click="applyTemplate(template.id)">
+              <button
+                class="text-blue-300 hover:text-white"
+                @click="applyTemplate(template.id)"
+              >
                 Apply
               </button>
-              <button class="text-red-300 hover:text-red-200" @click="removeTemplate(template.id)">
+              <button
+                class="text-red-300 hover:text-red-200"
+                @click="removeTemplate(template.id)"
+              >
                 ✕
               </button>
             </div>
