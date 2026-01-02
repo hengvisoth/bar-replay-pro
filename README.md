@@ -16,3 +16,5 @@ To add more data to the project:
 cd ./scripts/
 node ./generate-manifest.js
 ```
+
+.
