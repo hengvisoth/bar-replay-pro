@@ -1,12 +1,8 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, computed, shallowRef } from "vue";
 import { fetchManifest, loadCsvData } from "../services/dataLoader";
 import type { DataManifest } from "../services/dataLoader";
-import type {
-  Candle,
-  Timeframe,
-  IndicatorPoint,
-} from "../data/types";
+import type { Candle, Timeframe, IndicatorPoint } from "../data/types";
 import { useTradingStore } from "./tradingStore";
 import { INDICATOR_DEFINITIONS } from "../indicators/definitions";
 import { createIndicatorInstance } from "../indicators/factory";
@@ -36,14 +32,14 @@ const defaultIndicatorState: IndicatorState = INDICATOR_DEFINITIONS.reduce(
 export const useReplayStore = defineStore("replay", () => {
   // --- STATE ---
   const tradingStore = useTradingStore();
-  const datasets = ref<Record<string, Candle[]>>({});
-  const visibleDatasets = ref<Record<string, Candle[]>>({});
-  const visibleIndicators = ref<
+  const datasets = shallowRef<Record<string, Candle[]>>({});
+  const visibleDatasets = shallowRef<Record<string, Candle[]>>({});
+  const visibleIndicators = shallowRef<
     Record<string, Record<string, IndicatorPoint[]>>
   >({});
-  const indicatorSeries = ref<Record<string, Record<string, IndicatorPoint[]>>>(
-    {}
-  );
+  const indicatorSeries = shallowRef<
+    Record<string, Record<string, IndicatorPoint[]>>
+  >({});
   const availableTimeframes = ref<Timeframe[]>([]);
   const dataManifest = ref<DataManifest | null>(null);
   const activeSymbol = ref<string>("ETHUSDT");
@@ -232,10 +228,12 @@ export const useReplayStore = defineStore("replay", () => {
     const newVisible: Record<string, Candle[]> = {
       ...visibleDatasets.value,
     };
-    const newIndicatorSeries: Record<string, Record<string, IndicatorPoint[]>> =
-      {
-        ...indicatorSeries.value,
-      };
+    const newIndicatorSeries: Record<
+      string,
+      Record<string, IndicatorPoint[]>
+    > = {
+      ...indicatorSeries.value,
+    };
     const newVisibleIndicators: Record<
       string,
       Record<string, IndicatorPoint[]>
@@ -268,7 +266,6 @@ export const useReplayStore = defineStore("replay", () => {
     visibleDatasets.value = newVisible;
     indicatorSeries.value = newIndicatorSeries;
     visibleIndicators.value = newVisibleIndicators;
-
   }
 
   function getTimeframesToProcess(): Timeframe[] {
@@ -373,10 +370,7 @@ export const useReplayStore = defineStore("replay", () => {
   function stepForward() {
     const active = datasets.value[activeTimeframe.value];
     if (!active || active.length === 0) return;
-    const currentIndex = findVisibleEndIndex(
-      active,
-      currentReplayTime.value
-    );
+    const currentIndex = findVisibleEndIndex(active, currentReplayTime.value);
     const nextIndex = currentIndex + 1;
     if (!active[nextIndex]) return;
     currentReplayTime.value = active[nextIndex].time;
