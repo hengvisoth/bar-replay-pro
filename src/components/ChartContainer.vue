@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick, computed } from "vue";
+import {
+  ref,
+  onMounted,
+  onUnmounted,
+  watch,
+  nextTick,
+  computed,
+  shallowRef,
+} from "vue";
 import {
   createChart,
   type IChartApi,
@@ -46,9 +54,9 @@ const tradingStore = useTradingStore();
 const paneRoot = ref<HTMLElement | null>(null);
 const mainChartContainer = ref<HTMLElement | null>(null);
 const paneChartContainer = ref<HTMLElement | null>(null);
-const drawingChart = ref<IChartApi | null>(null);
-const drawingSeries = ref<ISeriesApi<"Candlestick"> | null>(null);
-const paneReferenceSeries = ref<ISeriesApi<"Line"> | null>(null);
+const drawingChart = shallowRef<IChartApi | null>(null);
+const drawingSeries = shallowRef<ISeriesApi<"Candlestick"> | null>(null);
+const paneReferenceSeries = shallowRef<ISeriesApi<"Line"> | null>(null);
 const mainPaneRatio = ref(0.7);
 const mainPaneHeight = ref(0);
 const paneHeight = ref(0);
@@ -499,8 +507,7 @@ function applyPreferredRange() {
   const dataset = store.visibleDatasets[props.timeframe] || [];
   if (dataset.length === 0) return false;
   const defaultCount = getDefaultCandleCount(props.timeframe, dataset.length);
-  const span =
-    preferredRangeSpan.value ?? Math.max(1, defaultCount - 1);
+  const span = preferredRangeSpan.value ?? Math.max(1, defaultCount - 1);
   const rightOffset = mainChart.timeScale().options().rightOffset ?? 0;
   const anchorIndex = getClosestIndex(dataset, store.currentReplayTime);
   const to = Math.max(0, anchorIndex + rightOffset);
@@ -597,8 +604,7 @@ watch(
     }
     updateIndicatorLegendValues();
     updateTradeMarkers();
-  },
-  { deep: true }
+  }
 );
 
 watch(
@@ -843,9 +849,11 @@ function resetViewToDefault() {
 }
 
 function getDefaultCandleCount(timeframe: string, datasetLength: number) {
-  const limits = TIMEFRAME_DEFAULT_RANGE[timeframe as keyof typeof TIMEFRAME_DEFAULT_RANGE];
+  const limits =
+    TIMEFRAME_DEFAULT_RANGE[timeframe as keyof typeof TIMEFRAME_DEFAULT_RANGE];
   if (!limits) return SNAPSHOT_CANDLE_COUNT;
-  const capped = datasetLength > 0 ? Math.min(limits.max, datasetLength) : limits.max;
+  const capped =
+    datasetLength > 0 ? Math.min(limits.max, datasetLength) : limits.max;
   return Math.max(limits.min, capped);
 }
 
