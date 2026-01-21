@@ -57,6 +57,7 @@ const paneReferenceSeries = shallowRef<ISeriesApi<"Line"> | null>(null);
 const mainPaneRatio = ref(0.7);
 const mainPaneHeight = ref(0);
 const paneHeight = ref(0);
+const shouldCenterOnTimeframeChange = ref(false);
 
 const hoveredCandle = ref<Candle | null>(null);
 const legendIndicators = ref<
@@ -512,6 +513,28 @@ function applyPreferredRange() {
   return true;
 }
 
+function centerRangeOnReplayTime() {
+  if (!mainChart) return false;
+  const dataset = store.visibleDatasets[props.timeframe] || [];
+  if (dataset.length === 0) return false;
+  const defaultCount = getDefaultCandleCount(props.timeframe, dataset.length);
+  const span = Math.max(1, Math.round(preferredRangeSpan.value ?? (defaultCount - 1)));
+  const anchorIndex = getClosestIndex(dataset, store.currentReplayTime);
+  const half = Math.floor(span / 2);
+  let from = anchorIndex - half;
+  let to = from + span;
+  if (from < 0) {
+    from = 0;
+    to = span;
+  }
+  const range: LogicalRange = { from, to };
+  setMainRange(range);
+  setPaneRange(range);
+  savedRanges.value[props.timeframe] = { ...range };
+  defaultRanges.value[props.timeframe] = { ...range };
+  return true;
+}
+
 function applySavedRangeOrFit() {
   if (!mainChart) return;
   const range = savedRanges.value[props.timeframe];
@@ -552,6 +575,12 @@ watch(
     }
 
     updateLegendToLatest();
+
+    if (shouldCenterOnTimeframeChange.value && newData.length > 0) {
+      if (centerRangeOnReplayTime()) {
+        shouldCenterOnTimeframeChange.value = false;
+      }
+    }
   }
 );
 
@@ -561,9 +590,11 @@ watch(
     if (oldTf) {
       saveCurrentRange(oldTf);
     }
+    shouldCenterOnTimeframeChange.value = true;
     initChartData();
     initIndicatorData();
-  }
+  },
+  { flush: "sync" }
 );
 
 watch(
