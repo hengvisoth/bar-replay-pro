@@ -87,7 +87,6 @@ export const useReplayStore = defineStore("replay", () => {
     };
     persistIndicatorSettings();
   }
-
   const decoratedIndicatorDefinitions = computed(() =>
     INDICATOR_DEFINITIONS.map((definition) => ({
       ...definition,
