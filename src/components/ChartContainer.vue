@@ -28,7 +28,6 @@ import {
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
 import ChartLegend from "./ChartLegend.vue";
-import DrawingManager from "./DrawingManager.vue";
 import type { Candle, IndicatorDefinition, IndicatorType } from "../data/types";
 
 const HANDLE_HEIGHT = 8;
@@ -54,8 +53,6 @@ const tradingStore = useTradingStore();
 const paneRoot = ref<HTMLElement | null>(null);
 const mainChartContainer = ref<HTMLElement | null>(null);
 const paneChartContainer = ref<HTMLElement | null>(null);
-const drawingChart = shallowRef<IChartApi | null>(null);
-const drawingSeries = shallowRef<ISeriesApi<"Candlestick"> | null>(null);
 const paneReferenceSeries = shallowRef<ISeriesApi<"Line"> | null>(null);
 const mainPaneRatio = ref(0.7);
 const mainPaneHeight = ref(0);
@@ -99,10 +96,6 @@ const hasPaneIndicators = computed(() =>
     (def) => isPaneIndicator(def) && store.isIndicatorActive(def.id)
   )
 );
-const activeDatasetForTimeframe = computed(
-  () => store.visibleDatasets[props.timeframe] || []
-);
-
 onMounted(async () => {
   await nextTick();
   recomputePaneHeights();
@@ -118,7 +111,6 @@ onMounted(async () => {
     timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 5 },
     crosshair: { mode: 1 },
   });
-  drawingChart.value = mainChart;
 
   if (paneChartContainer.value) {
     paneChart = createChart(paneChartContainer.value, {
@@ -141,7 +133,6 @@ onMounted(async () => {
     wickUpColor: "#26a69a",
     wickDownColor: "#ef5350",
   });
-  drawingSeries.value = candleSeries;
   tradeMarkersPrimitive = createSeriesMarkers(candleSeries, []);
 
   overlayIndicatorSeries = {};
@@ -688,8 +679,6 @@ onUnmounted(() => {
     clearTimeout(snapshotStatusTimeout);
     snapshotStatusTimeout = null;
   }
-  drawingChart.value = null;
-  drawingSeries.value = null;
   paneReferenceSeries.value = null;
   clickHandler = null;
   window.removeEventListener("keydown", handleHotkeys);
@@ -972,17 +961,6 @@ async function copySnapshotToClipboard() {
       :symbol="store.activeSymbol"
       :interval="timeframe"
       :indicators="legendIndicators"
-    />
-    <DrawingManager
-      :symbol="store.activeSymbol"
-      :timeframe="timeframe"
-      :dataset="activeDatasetForTimeframe"
-      :main-chart="drawingChart"
-      :main-series="drawingSeries"
-      :main-container="mainChartContainer"
-      :pane-chart="paneChart"
-      :pane-series="paneReferenceSeries"
-      :pane-container="paneChartContainer"
     />
 
     <div class="absolute inset-0 flex flex-col">
