@@ -15,6 +15,7 @@ import {
   CandlestickSeries,
   LineSeries,
   type MouseEventParams,
+  type Logical,
   type SeriesDataItemTypeMap,
   type LogicalRange,
   createSeriesMarkers,
@@ -275,6 +276,10 @@ function toTimestamp(time: Time | undefined) {
   return typeof time === "number" ? time : null;
 }
 
+function toLogical(value: number): Logical {
+  return value as Logical;
+}
+
 function findLatestItemAtTime<T extends { time: number }>(
   items: T[],
   targetTime: number,
@@ -502,7 +507,7 @@ function applyPreferredRange() {
   const anchorIndex = getClosestIndex(dataset, store.currentReplayTime);
   const to = Math.max(0, anchorIndex + rightOffset);
   const from = Math.max(0, to - span);
-  const range: LogicalRange = { from, to };
+  const range: LogicalRange = { from: toLogical(from), to: toLogical(to) };
 
   setMainRange(range);
   setPaneRange(range);
@@ -528,7 +533,7 @@ function centerRangeOnReplayTime() {
     from = 0;
     to = span;
   }
-  const range: LogicalRange = { from, to };
+  const range: LogicalRange = { from: toLogical(from), to: toLogical(to) };
   setMainRange(range);
   setPaneRange(range);
   savedRanges.value[props.timeframe] = { ...range };
@@ -861,7 +866,10 @@ function resetViewToDefault() {
   const to = Math.max(0, lastIndex + rightOffset);
   const defaultCount = getDefaultCandleCount(props.timeframe, dataset.length);
   const from = Math.max(0, to - (defaultCount - 1));
-  const snapshotRange: LogicalRange = { from, to };
+  const snapshotRange: LogicalRange = {
+    from: toLogical(from),
+    to: toLogical(to),
+  };
 
   setMainRange(snapshotRange);
   setPaneRange(snapshotRange);

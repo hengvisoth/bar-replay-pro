@@ -2,7 +2,12 @@ import { defineStore } from "pinia";
 import { ref, computed, shallowRef } from "vue";
 import { fetchManifest, loadCsvData } from "../services/dataLoader";
 import type { DataManifest } from "../services/dataLoader";
-import type { Candle, Timeframe, IndicatorPoint } from "../data/types";
+import type {
+  Candle,
+  Timeframe,
+  IndicatorPoint,
+  IndicatorDefinition,
+} from "../data/types";
 import { useTradingStore } from "./tradingStore";
 import { INDICATOR_DEFINITIONS } from "../indicators/definitions";
 import { createIndicatorInstance } from "../indicators/factory";
@@ -74,7 +79,9 @@ export const useReplayStore = defineStore("replay", () => {
     }
   }
 
-  function isValidHexColor(value: string | undefined | null) {
+  function isValidHexColor(
+    value: string | undefined | null,
+  ): value is string {
     if (!value) return false;
     return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value);
   }
@@ -87,13 +94,14 @@ export const useReplayStore = defineStore("replay", () => {
     };
     persistIndicatorSettings();
   }
-  const decoratedIndicatorDefinitions = computed(() =>
-    INDICATOR_DEFINITIONS.map((definition) => ({
-      ...definition,
-      color: isValidHexColor(indicatorSettings.value[definition.id]?.color)
-        ? indicatorSettings.value[definition.id]?.color
-        : definition.color,
-    })),
+  const decoratedIndicatorDefinitions = computed<IndicatorDefinition[]>(() =>
+    INDICATOR_DEFINITIONS.map((definition) => {
+      const storedColor = indicatorSettings.value[definition.id]?.color;
+      return {
+        ...definition,
+        color: isValidHexColor(storedColor) ? storedColor : definition.color,
+      };
+    }),
   );
 
   const isPlaying = ref(false);
