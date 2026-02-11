@@ -30,7 +30,7 @@ watch(
       }
     }
   },
-  { deep: true }
+  { deep: true },
 );
 
 function setColorInputRef(id: string, element: HTMLInputElement | null) {
@@ -129,7 +129,10 @@ function handleIndicatorColorChange(id: string, event: Event) {
                 :value="indicator.color"
                 :ref="
                   (el) =>
-                    setColorInputRef(indicator.id, el as HTMLInputElement | null)
+                    setColorInputRef(
+                      indicator.id,
+                      el as HTMLInputElement | null,
+                    )
                 "
                 @input="
                   (event) => handleIndicatorColorChange(indicator.id, event)
