@@ -108,7 +108,7 @@ onMounted(async () => {
     width: mainChartContainer.value.clientWidth,
     height: mainChartContainer.value.clientHeight,
     timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 5 },
-    crosshair: { mode: 1 },
+    crosshair: { mode: 0 },
   });
 
   if (paneChartContainer.value) {
@@ -121,7 +121,7 @@ onMounted(async () => {
       width: paneChartContainer.value.clientWidth,
       height: paneChartContainer.value.clientHeight,
       timeScale: { timeVisible: true, secondsVisible: false, rightOffset: 5 },
-      crosshair: { mode: 1 },
+      crosshair: { mode: 0 },
     });
   }
 
