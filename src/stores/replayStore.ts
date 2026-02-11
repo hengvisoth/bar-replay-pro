@@ -26,7 +26,7 @@ const defaultIndicatorState: IndicatorState = INDICATOR_DEFINITIONS.reduce(
     acc[indicator.id] = indicator.defaultActive ?? true;
     return acc;
   },
-  {} as IndicatorState
+  {} as IndicatorState,
 );
 
 export const useReplayStore = defineStore("replay", () => {
@@ -67,7 +67,7 @@ export const useReplayStore = defineStore("replay", () => {
     try {
       window.localStorage.setItem(
         INDICATOR_STORAGE_KEY,
-        JSON.stringify(indicatorSettings.value)
+        JSON.stringify(indicatorSettings.value),
       );
     } catch (error) {
       console.warn("Failed to persist indicator settings", error);
@@ -93,12 +93,12 @@ export const useReplayStore = defineStore("replay", () => {
       color: isValidHexColor(indicatorSettings.value[definition.id]?.color)
         ? indicatorSettings.value[definition.id]?.color
         : definition.color,
-    }))
+    })),
   );
 
   const isPlaying = ref(false);
   const isSelectingReplay = ref(false);
-  const playbackSpeed = ref(1000);
+  const playbackSpeed = ref(500);
   const activeTimeframe = ref<Timeframe>("1h");
   const activeIndicators = ref<IndicatorState>({ ...defaultIndicatorState });
   // The Master Clock (Unix Timestamp)
@@ -121,7 +121,7 @@ export const useReplayStore = defineStore("replay", () => {
   // Map current time to the active timeframe's index for slider alignment
   const masterIndex = computed(() => {
     const index = activeDataset.value.findIndex(
-      (c) => c.time >= currentReplayTime.value
+      (c) => c.time >= currentReplayTime.value,
     );
 
     if (index === -1) {
@@ -162,11 +162,11 @@ export const useReplayStore = defineStore("replay", () => {
         }
 
         const results = await Promise.all(
-          files.map((filePath) => loadCsvData(filePath))
+          files.map((filePath) => loadCsvData(filePath)),
         );
         const merged = results.flat().sort((a, b) => a.time - b.time);
         loaded[tf] = merged;
-      })
+      }),
     );
 
     datasets.value = loaded;
@@ -191,7 +191,7 @@ export const useReplayStore = defineStore("replay", () => {
   }
 
   const availableSymbols = computed(() =>
-    Object.keys(dataManifest.value || {})
+    Object.keys(dataManifest.value || {}),
   );
 
   async function setSymbol(symbol: string) {
@@ -254,7 +254,7 @@ export const useReplayStore = defineStore("replay", () => {
         key,
         filtered,
         visibleDatasets.value[key] || [],
-        indicatorSeries.value[key] || {}
+        indicatorSeries.value[key] || {},
       );
 
       newIndicatorSeries[key] = computedIndicators;
@@ -275,7 +275,7 @@ export const useReplayStore = defineStore("replay", () => {
     timeframe: string,
     visibleCandles: Candle[],
     previousVisible: Candle[],
-    previousIndicators: Record<string, IndicatorPoint[]>
+    previousIndicators: Record<string, IndicatorPoint[]>,
   ): Record<string, IndicatorPoint[]> {
     const result: Record<string, IndicatorPoint[]> = {};
     const instances = indicatorInstances.value[timeframe] || {};
@@ -459,8 +459,8 @@ export const useReplayStore = defineStore("replay", () => {
 
   const activeIndicatorDefinitions = computed(() =>
     decoratedIndicatorDefinitions.value.filter(
-      (def) => activeIndicators.value[def.id]
-    )
+      (def) => activeIndicators.value[def.id],
+    ),
   );
 
   function syncIndicatorInstancesWithState() {
@@ -479,7 +479,7 @@ export const useReplayStore = defineStore("replay", () => {
   }
 
   function filterIndicatorsForDisplay(
-    series: Record<string, IndicatorPoint[]>
+    series: Record<string, IndicatorPoint[]>,
   ): Record<string, IndicatorPoint[]> {
     const filtered: Record<string, IndicatorPoint[]> = {};
     for (const [id, points] of Object.entries(series)) {
