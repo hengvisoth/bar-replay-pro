@@ -94,16 +94,14 @@ let snapshotStatusTimeout: number | null = null;
 
 const hasPaneIndicators = computed(() =>
   store.activeIndicatorDefinitions.some(
-    (def) => isPaneIndicator(def) && store.isIndicatorActive(def.id)
-  )
+    (def) => isPaneIndicator(def) && store.isIndicatorActive(def.id),
+  ),
 );
 onMounted(async () => {
   await nextTick();
   recomputePaneHeights();
   if (!mainChartContainer.value) return;
 
-  console.log("Chart Container Height ", mainChartContainer.value.clientHeight);
-  console.log("Chart Container Width ", mainChartContainer.value.clientWidth);
   mainChart = createChart(mainChartContainer.value, {
     layout: { background: { color: "#050505" }, textColor: "#d1d4dc" },
     grid: { vertLines: { color: "#1f2937" }, horzLines: { color: "#1f2937" } },
@@ -184,7 +182,7 @@ onMounted(async () => {
       syncCrosshairPosition(
         paneChart,
         param,
-        getPaneCrosshairTarget(param.time)
+        getPaneCrosshairTarget(param.time),
       );
     }
     if (!candleSeries) return;
@@ -214,7 +212,7 @@ onMounted(async () => {
       syncCrosshairPosition(
         mainChart,
         param,
-        getMainCrosshairTarget(param.time)
+        getMainCrosshairTarget(param.time),
       );
     }
     if (!param.time) {
@@ -279,7 +277,7 @@ function toTimestamp(time: Time | undefined) {
 
 function findLatestItemAtTime<T extends { time: number }>(
   items: T[],
-  targetTime: number
+  targetTime: number,
 ) {
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i];
@@ -291,7 +289,7 @@ function findLatestItemAtTime<T extends { time: number }>(
 }
 
 function getMainCrosshairTarget(
-  time: Time | undefined
+  time: Time | undefined,
 ): CrosshairTarget | null {
   if (!candleSeries) return null;
   const timestamp = toTimestamp(time);
@@ -305,7 +303,7 @@ function getMainCrosshairTarget(
 }
 
 function getPaneCrosshairTarget(
-  time: Time | undefined
+  time: Time | undefined,
 ): CrosshairTarget | null {
   const timestamp = toTimestamp(time);
   if (timestamp === null) return null;
@@ -325,7 +323,7 @@ function getPaneCrosshairTarget(
 function syncCrosshairPosition(
   targetChart: IChartApi | null,
   param: MouseEventParams,
-  target: CrosshairTarget | null
+  target: CrosshairTarget | null,
 ) {
   if (!targetChart) return;
   if (param.time === undefined || !target || !Number.isFinite(target.price)) {
@@ -518,7 +516,10 @@ function centerRangeOnReplayTime() {
   const dataset = store.visibleDatasets[props.timeframe] || [];
   if (dataset.length === 0) return false;
   const defaultCount = getDefaultCandleCount(props.timeframe, dataset.length);
-  const span = Math.max(1, Math.round(preferredRangeSpan.value ?? (defaultCount - 1)));
+  const span = Math.max(
+    1,
+    Math.round(preferredRangeSpan.value ?? defaultCount - 1),
+  );
   const anchorIndex = getClosestIndex(dataset, store.currentReplayTime);
   const half = Math.floor(span / 2);
   let from = anchorIndex - half;
@@ -581,7 +582,7 @@ watch(
         shouldCenterOnTimeframeChange.value = false;
       }
     }
-  }
+  },
 );
 
 watch(
@@ -594,7 +595,7 @@ watch(
     initChartData();
     initIndicatorData();
   },
-  { flush: "sync" }
+  { flush: "sync" },
 );
 
 watch(
@@ -626,21 +627,21 @@ watch(
     }
     updateIndicatorLegendValues();
     updateTradeMarkers();
-  }
+  },
 );
 
 watch(
   () => tradingStore.tradeMarkers,
   () => {
     updateTradeMarkers();
-  }
+  },
 );
 
 watch(
   () => tradingStore.pendingOrders,
   () => {
     updatePendingOrderLines();
-  }
+  },
 );
 
 watch(mainPaneRatio, () => {
@@ -669,7 +670,7 @@ watch(
       });
     }
   },
-  { deep: true }
+  { deep: true },
 );
 
 onUnmounted(() => {
@@ -738,7 +739,7 @@ function resizeCharts() {
 function updateIndicatorLegendValues(targetTime?: number) {
   const indicatorMap = store.visibleIndicators[props.timeframe] || {};
   const activeIndicators = store.indicatorDefinitions.filter((definition) =>
-    store.isIndicatorActive(definition.id)
+    store.isIndicatorActive(definition.id),
   );
 
   const overlayValues: Array<{
@@ -791,7 +792,7 @@ function updatePendingOrderLines() {
   if (!candleSeries) return;
   const activeOrders = tradingStore.pendingOrders;
   const existingIds = new Set(
-    Object.keys(orderPriceLines).map((id) => Number(id))
+    Object.keys(orderPriceLines).map((id) => Number(id)),
   );
 
   for (const order of activeOrders) {
@@ -936,7 +937,7 @@ async function copySnapshotToClipboard() {
     context.fillText(
       timeframeLabel,
       labelX + labelPaddingX,
-      labelY + labelPaddingY
+      labelY + labelPaddingY,
     );
     context.restore();
 
