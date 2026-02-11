@@ -2,36 +2,16 @@ import type { IndicatorDefinition } from "../data/types";
 import { INDICATOR_IDS } from "./indicatorIds";
 
 export const INDICATOR_DEFAULT_COLORS = {
-  [INDICATOR_IDS.SMA_14]: "#f0b90b",
-  [INDICATOR_IDS.SMA_50]: "#1abc9c",
-  [INDICATOR_IDS.EMA_20]: "#f472b6",
-  [INDICATOR_IDS.EMA_50]: "#ec4899",
-  [INDICATOR_IDS.EMA_95]: "#0ea5e9",
-  [INDICATOR_IDS.EMA_200]: "#d946ef",
+  [INDICATOR_IDS.EMA_20]: "#AC1513",
+  [INDICATOR_IDS.EMA_50]: "#a75209",
+  [INDICATOR_IDS.EMA_95]: "#1dacae",
+  [INDICATOR_IDS.EMA_200]: "#0000a6",
   [INDICATOR_IDS.ATR_14]: "#fb923c",
   [INDICATOR_IDS.RSI_14]: "#a78bfa",
   [INDICATOR_IDS.ADX_14]: "#38bdf8",
 } as const;
 
 export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
-  {
-    id: INDICATOR_IDS.SMA_14,
-    label: "SMA 14",
-    type: "sma",
-    period: 14,
-    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.SMA_14],
-    defaultActive: false,
-    overlay: true,
-  },
-  {
-    id: INDICATOR_IDS.SMA_50,
-    label: "SMA 50",
-    type: "sma",
-    period: 50,
-    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.SMA_50],
-    defaultActive: false,
-    overlay: true,
-  },
   {
     id: INDICATOR_IDS.EMA_20,
     label: "EMA 20",
