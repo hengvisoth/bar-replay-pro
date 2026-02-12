@@ -12,6 +12,7 @@ import { useTradingStore } from "./tradingStore";
 import { INDICATOR_DEFINITIONS } from "../indicators/definitions";
 import { createIndicatorInstance } from "../indicators/factory";
 import type { IndicatorStrategy } from "../indicators/types";
+import { INDICATOR_IDS } from "../indicators/indicatorIds";
 
 const TIMEFRAME_STEP_SECONDS: Record<string, number> = {
   "1m": 60,
@@ -409,6 +410,15 @@ export const useReplayStore = defineStore("replay", () => {
   function toggleIndicator(id: string) {
     if (!(id in activeIndicators.value)) return;
     activeIndicators.value[id] = !activeIndicators.value[id];
+    if (
+      id === INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M &&
+      activeIndicators.value[id] &&
+      activeTimeframe.value !== "15m" &&
+      availableTimeframes.value.includes("15m")
+    ) {
+      activeTimeframe.value = "15m";
+      clampReplayTime();
+    }
     syncIndicatorInstancesWithState();
     updateView();
   }
