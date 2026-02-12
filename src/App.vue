@@ -7,7 +7,7 @@ import TimeframeTabs from "./components/TimeframeTabs.vue";
 import TradingPanel from "./components/TradingPanel.vue";
 import { useReplayStore } from "./stores/replayStore";
 import { useTradingStore } from "./stores/tradingStore";
-import { useUiStore } from "./stores/uiStore";
+import { useUiStore, type DrawingTool } from "./stores/uiStore";
 
 const store = useReplayStore();
 const tradingStore = useTradingStore();
@@ -46,6 +46,18 @@ function handleIndicatorColorChange(id: string, event: Event) {
   const target = event.target as HTMLInputElement | null;
   if (!target) return;
   store.setIndicatorColor(id, target.value);
+}
+
+function setDrawingTool(tool: DrawingTool) {
+  uiStore.setDrawingTool(tool);
+}
+
+function undoDrawing() {
+  uiStore.removeLastTrendLine(store.activeSymbol, store.activeTimeframe);
+}
+
+function clearDrawings() {
+  uiStore.clearTrendLines(store.activeSymbol, store.activeTimeframe);
 }
 </script>
 
@@ -93,6 +105,52 @@ function handleIndicatorColorChange(id: string, event: Event) {
         >
           {{ store.isSelectingReplay ? "Cancel Replay" : "Bar Replay" }}
         </button>
+
+        <div class="flex items-center gap-2">
+          <span class="text-[11px] uppercase tracking-[0.25em] text-gray-500"
+            >Draw</span
+          >
+          <button
+            type="button"
+            class="px-3 py-1 text-xs font-semibold rounded border transition-colors"
+            :class="
+              uiStore.drawingTool === 'cursor'
+                ? 'border-blue-500 bg-blue-500/20 text-blue-100'
+                : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100'
+            "
+            @click="setDrawingTool('cursor')"
+          >
+            Cursor
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1 text-xs font-semibold rounded border transition-colors"
+            :class="
+              uiStore.drawingTool === 'trendLine'
+                ? 'border-blue-500 bg-blue-500/20 text-blue-100'
+                : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100'
+            "
+            @click="setDrawingTool('trendLine')"
+          >
+            Trend Line
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1 text-xs font-semibold rounded border border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100 transition-colors"
+            title="Remove latest trend line"
+            @click="undoDrawing"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            class="px-3 py-1 text-xs font-semibold rounded border border-gray-700 text-gray-400 hover:border-red-500 hover:text-red-100 transition-colors"
+            title="Clear all trend lines in current symbol/timeframe"
+            @click="clearDrawings"
+          >
+            Clear
+          </button>
+        </div>
 
         <div class="ml-auto flex items-center gap-3">
           <span class="text-[11px] uppercase tracking-[0.25em] text-gray-500"

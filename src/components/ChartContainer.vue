@@ -28,6 +28,7 @@ import {
 } from "lightweight-charts";
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
+import { useUiStore, type DrawingPoint, type TrendLineDrawing } from "../stores/uiStore";
 import { INDICATOR_IDS } from "../indicators/indicatorIds";
 import { computeTrendFollowingAlertMarkers } from "../indicators/TrendFollowingAlertsIndicator";
 import ChartLegend from "./ChartLegend.vue";
@@ -45,6 +46,16 @@ type CrosshairTarget = {
   series: CrosshairSeries;
   price: number;
 };
+type ProjectedTrendLine = {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: string;
+  lineWidth: number;
+  dashed: boolean;
+};
 
 const props = defineProps<{
   timeframe: string;
@@ -52,6 +63,7 @@ const props = defineProps<{
 
 const store = useReplayStore();
 const tradingStore = useTradingStore();
+const uiStore = useUiStore();
 
 const paneRoot = ref<HTMLElement | null>(null);
 const mainChartContainer = ref<HTMLElement | null>(null);
@@ -74,6 +86,9 @@ const defaultRanges = ref<Record<string, LogicalRange | null>>({});
 const preferredRangeSpan = ref<number | null>(null);
 const snapshotStatus = ref<"idle" | "copying" | "copied" | "error">("idle");
 const snapshotError = ref("");
+const drawingStartPoint = ref<DrawingPoint | null>(null);
+const drawingPreviewPoint = ref<DrawingPoint | null>(null);
+const drawingRefreshTick = ref(0);
 
 let mainChart: IChartApi | null = null;
 let paneChart: IChartApi | null = null;
@@ -101,6 +116,37 @@ const hasPaneIndicators = computed(() =>
     (def) => isPaneIndicator(def) && store.isIndicatorActive(def.id),
   ),
 );
+const currentTrendLines = computed(() =>
+  uiStore.getTrendLines(store.activeSymbol, props.timeframe),
+);
+const projectedTrendLines = computed<ProjectedTrendLine[]>(() => {
+  drawingRefreshTick.value;
+  const projected: ProjectedTrendLine[] = [];
+  for (const line of currentTrendLines.value) {
+    const item = projectTrendLine(line, false);
+    if (item) {
+      projected.push(item);
+    }
+  }
+  if (drawingStartPoint.value && drawingPreviewPoint.value) {
+    const preview = projectTrendLine(
+      {
+        id: "trendline-preview",
+        symbol: store.activeSymbol,
+        timeframe: props.timeframe,
+        start: drawingStartPoint.value,
+        end: drawingPreviewPoint.value,
+        color: "#94a3b8",
+        lineWidth: 1,
+      },
+      true,
+    );
+    if (preview) {
+      projected.push(preview);
+    }
+  }
+  return projected;
+});
 onMounted(async () => {
   await nextTick();
   recomputePaneHeights();
@@ -162,9 +208,14 @@ onMounted(async () => {
   }
 
   clickHandler = (param: MouseEventParams) => {
-    if (!store.isSelectingReplay || !param.time) return;
-    if (typeof param.time === "number") {
-      store.setReplayStart(param.time);
+    if (store.isSelectingReplay) {
+      if (typeof param.time === "number") {
+        store.setReplayStart(param.time);
+      }
+      return;
+    }
+    if (uiStore.drawingTool === "trendLine") {
+      handleTrendLineClick(param);
     }
   };
   mainChart.subscribeClick(clickHandler);
@@ -184,6 +235,9 @@ onMounted(async () => {
   };
 
   mainChart.subscribeCrosshairMove((param: MouseEventParams) => {
+    if (uiStore.drawingTool === "trendLine") {
+      updateTrendLinePreview(param);
+    }
     if (paneChart) {
       syncCrosshairPosition(
         paneChart,
@@ -240,6 +294,7 @@ onMounted(async () => {
 
   const mainTimeScale = mainChart.timeScale();
   const handleMainRangeChange = (range: LogicalRange | null) => {
+    refreshDrawingOverlay();
     if (!range || isSyncingRange) return;
     scheduleRangeSync("main", range);
   };
@@ -250,6 +305,7 @@ onMounted(async () => {
   if (paneChart) {
     const paneTimeScale = paneChart.timeScale();
     const handlePaneRangeChange = (range: LogicalRange | null) => {
+      refreshDrawingOverlay();
       if (!range || isSyncingRange) return;
       scheduleRangeSync("pane", range);
     };
@@ -268,6 +324,7 @@ onMounted(async () => {
 
   window.addEventListener("resize", handleResize);
   window.addEventListener("keydown", handleHotkeys);
+  refreshDrawingOverlay();
 });
 
 function isPaneIndicator(definition: IndicatorDefinition) {
@@ -346,6 +403,91 @@ function syncCrosshairPosition(
     return;
   }
   targetChart.setCrosshairPosition(target.price, param.time, target.series);
+}
+
+function toDrawingPoint(param: MouseEventParams): DrawingPoint | null {
+  if (!candleSeries || !param.point || typeof param.time !== "number") {
+    return null;
+  }
+  const price = candleSeries.coordinateToPrice(param.point.y);
+  if (price == null || !Number.isFinite(price)) {
+    return null;
+  }
+  return { time: param.time, price };
+}
+
+function handleTrendLineClick(param: MouseEventParams) {
+  const point = toDrawingPoint(param);
+  if (!point) return;
+
+  if (!drawingStartPoint.value) {
+    drawingStartPoint.value = point;
+    drawingPreviewPoint.value = point;
+    refreshDrawingOverlay();
+    return;
+  }
+
+  uiStore.addTrendLine({
+    symbol: store.activeSymbol,
+    timeframe: props.timeframe,
+    start: drawingStartPoint.value,
+    end: point,
+  });
+  drawingStartPoint.value = null;
+  drawingPreviewPoint.value = null;
+  refreshDrawingOverlay();
+}
+
+function updateTrendLinePreview(param: MouseEventParams) {
+  if (!drawingStartPoint.value) return;
+  const point = toDrawingPoint(param);
+  drawingPreviewPoint.value = point;
+  refreshDrawingOverlay();
+}
+
+function cancelTrendLineDraft() {
+  if (!drawingStartPoint.value && !drawingPreviewPoint.value) return;
+  drawingStartPoint.value = null;
+  drawingPreviewPoint.value = null;
+  refreshDrawingOverlay();
+}
+
+function refreshDrawingOverlay() {
+  drawingRefreshTick.value += 1;
+}
+
+function projectTrendLine(
+  line: TrendLineDrawing,
+  dashed: boolean,
+): ProjectedTrendLine | null {
+  if (!mainChart || !candleSeries) return null;
+  const timeScale = mainChart.timeScale();
+  const x1 = timeScale.timeToCoordinate(line.start.time as Time);
+  const y1 = candleSeries.priceToCoordinate(line.start.price);
+  const x2 = timeScale.timeToCoordinate(line.end.time as Time);
+  const y2 = candleSeries.priceToCoordinate(line.end.price);
+  if (
+    x1 == null ||
+    y1 == null ||
+    x2 == null ||
+    y2 == null ||
+    !Number.isFinite(x1) ||
+    !Number.isFinite(y1) ||
+    !Number.isFinite(x2) ||
+    !Number.isFinite(y2)
+  ) {
+    return null;
+  }
+  return {
+    id: line.id,
+    x1,
+    y1,
+    x2,
+    y2,
+    color: line.color,
+    lineWidth: line.lineWidth,
+    dashed,
+  };
 }
 
 function setMainRange(range: LogicalRange) {
@@ -599,6 +741,7 @@ watch(
       }
     }
     updateTrendAlertMarkers();
+    refreshDrawingOverlay();
   },
 );
 
@@ -612,6 +755,7 @@ watch(
     initChartData();
     initIndicatorData();
     updateTrendAlertMarkers();
+    refreshDrawingOverlay();
   },
   { flush: "sync" },
 );
@@ -679,13 +823,31 @@ watch(
   { deep: false },
 );
 
+watch(
+  () => [uiStore.drawingTool, props.timeframe, store.activeSymbol],
+  () => {
+    cancelTrendLineDraft();
+    refreshDrawingOverlay();
+  },
+);
+
+watch(
+  () => uiStore.trendLines,
+  () => {
+    refreshDrawingOverlay();
+  },
+  { deep: true },
+);
+
 watch(mainPaneRatio, () => {
   recomputePaneHeights();
   resizeCharts();
+  refreshDrawingOverlay();
 });
 watch(hasPaneIndicators, () => {
   recomputePaneHeights();
   resizeCharts();
+  refreshDrawingOverlay();
 });
 
 watch(
@@ -774,6 +936,7 @@ function resizeCharts() {
       height: paneChartContainer.value.clientHeight,
     });
   }
+  refreshDrawingOverlay();
 }
 
 function updateIndicatorLegendValues(targetTime?: number) {
@@ -976,6 +1139,23 @@ function getDefaultCandleCount(timeframe: string, datasetLength: number) {
 }
 
 function handleHotkeys(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    if (drawingStartPoint.value) {
+      event.preventDefault();
+      cancelTrendLineDraft();
+    }
+    return;
+  }
+  if (
+    (event.key === "Backspace" || event.key === "Delete") &&
+    uiStore.drawingTool === "trendLine"
+  ) {
+    event.preventDefault();
+    cancelTrendLineDraft();
+    uiStore.removeLastTrendLine(store.activeSymbol, props.timeframe);
+    refreshDrawingOverlay();
+    return;
+  }
   if (event.altKey && event.key.toLowerCase() === "r") {
     event.preventDefault();
     resetViewToDefault();
@@ -1070,9 +1250,12 @@ async function copySnapshotToClipboard() {
   <div
     ref="paneRoot"
     class="relative w-full h-full bg-[#050505] overflow-hidden border-r border-gray-800"
-    :class="
-      store.isSelectingReplay ? 'cursor-crosshair ring-1 ring-blue-500/50' : ''
-    "
+    :class="[
+      store.isSelectingReplay ? 'cursor-crosshair ring-1 ring-blue-500/50' : '',
+      uiStore.drawingTool === 'trendLine' && !store.isSelectingReplay
+        ? 'cursor-crosshair'
+        : '',
+    ]"
   >
     <div
       v-if="store.isSelectingReplay"
@@ -1082,6 +1265,18 @@ async function copySnapshotToClipboard() {
         class="px-3 py-2 bg-blue-600/90 text-xs font-semibold rounded shadow-lg"
       >
         Click a candle to start replay
+      </div>
+    </div>
+    <div
+      v-else-if="uiStore.drawingTool === 'trendLine'"
+      class="absolute left-3 top-16 z-20 pointer-events-none"
+    >
+      <div class="px-2 py-1 bg-[#050505]/90 border border-blue-500/50 text-[11px] text-blue-100 rounded">
+        {{
+          drawingStartPoint
+            ? "Click second point to finish line"
+            : "Trend Line: click first point"
+        }}
       </div>
     </div>
 
@@ -1137,6 +1332,20 @@ async function copySnapshotToClipboard() {
         :style="{ height: `${mainPaneHeight}px`, minHeight: '160px' }"
       >
         <div ref="mainChartContainer" class="w-full h-full"></div>
+        <svg class="absolute inset-0 z-10 w-full h-full pointer-events-none">
+          <line
+            v-for="line in projectedTrendLines"
+            :key="line.id"
+            :x1="line.x1"
+            :y1="line.y1"
+            :x2="line.x2"
+            :y2="line.y2"
+            :stroke="line.color"
+            :stroke-width="line.lineWidth"
+            :stroke-dasharray="line.dashed ? '6 4' : undefined"
+            stroke-linecap="round"
+          />
+        </svg>
       </div>
 
       <template v-if="hasPaneIndicators">
