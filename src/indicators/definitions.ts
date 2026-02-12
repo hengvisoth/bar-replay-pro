@@ -4,11 +4,13 @@ import { INDICATOR_IDS } from "./indicatorIds";
 export const INDICATOR_DEFAULT_COLORS = {
   [INDICATOR_IDS.EMA_20]: "#AC1513",
   [INDICATOR_IDS.EMA_50]: "#a75209",
+  [INDICATOR_IDS.EMA_100]: "#6366f1",
   [INDICATOR_IDS.EMA_95]: "#1dacae",
   [INDICATOR_IDS.EMA_200]: "#0000a6",
   [INDICATOR_IDS.ATR_14]: "#fb923c",
   [INDICATOR_IDS.RSI_14]: "#a78bfa",
   [INDICATOR_IDS.ADX_14]: "#38bdf8",
+  [INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M]: "#22c55e",
 } as const;
 
 export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
@@ -34,6 +36,14 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     type: "ema",
     period: 200,
     color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.EMA_200],
+    overlay: true,
+  },
+  {
+    id: INDICATOR_IDS.EMA_100,
+    label: "EMA 100",
+    type: "ema",
+    period: 100,
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.EMA_100],
     overlay: true,
   },
   {
@@ -70,5 +80,12 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.ADX_14],
     lineWidth: 2,
     overlay: false,
+  },
+  {
+    id: INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M,
+    label: "15m Trend Alerts",
+    type: "trendAlerts",
+    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M],
+    overlay: true,
   },
 ];
