@@ -4,6 +4,7 @@ import { EMAIndicator } from "./EMAIndicator";
 import { ATRIndicator } from "./ATRIndicator";
 import { RSIIndicator } from "./RSIIndicator";
 import { ADXIndicator } from "./ADXIndicator";
+import { TrendFollowingAlertsIndicator } from "./TrendFollowingAlertsIndicator";
 import type { IndicatorStrategy } from "./types";
 
 export function createIndicatorInstance(
@@ -20,6 +21,8 @@ export function createIndicatorInstance(
       return new RSIIndicator(definition);
     case "adx":
       return new ADXIndicator(definition);
+    case "trendAlerts":
+      return new TrendFollowingAlertsIndicator(definition);
     default:
       throw new Error(`Unsupported indicator type: ${definition.type}`);
   }
