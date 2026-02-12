@@ -28,6 +28,8 @@ import {
 } from "lightweight-charts";
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
+import { INDICATOR_IDS } from "../indicators/indicatorIds";
+import { computeTrendFollowingAlertMarkers } from "../indicators/TrendFollowingAlertsIndicator";
 import ChartLegend from "./ChartLegend.vue";
 import type { Candle, IndicatorDefinition, IndicatorType } from "../data/types";
 
@@ -82,6 +84,7 @@ let unsubscribeMainRange: (() => void) | null = null;
 let unsubscribePaneRange: (() => void) | null = null;
 let isSyncingRange = false;
 let tradeMarkersPrimitive: ISeriesMarkersPluginApi<Time> | null = null;
+let trendAlertMarkersPrimitive: ISeriesMarkersPluginApi<Time> | null = null;
 let clickHandler: ((param: MouseEventParams) => void) | null = null;
 let orderPriceLines: Record<number, IPriceLine> = {};
 let isPaneResizing = false;
@@ -134,10 +137,12 @@ onMounted(async () => {
     wickDownColor: "#ef5350",
   });
   tradeMarkersPrimitive = createSeriesMarkers(candleSeries, []);
+  trendAlertMarkersPrimitive = createSeriesMarkers(candleSeries, []);
 
   overlayIndicatorSeries = {};
   paneIndicatorSeries = {};
   for (const indicator of store.indicatorDefinitions) {
+    if (isMarkerOnlyIndicator(indicator)) continue;
     const isPane = isPaneIndicator(indicator);
     const targetChart = isPane ? paneChart : mainChart;
     if (!targetChart) continue;
@@ -230,6 +235,7 @@ onMounted(async () => {
   initChartData();
   initIndicatorData();
   updateTradeMarkers();
+  updateTrendAlertMarkers();
   updatePendingOrderLines();
 
   const mainTimeScale = mainChart.timeScale();
@@ -270,6 +276,10 @@ function isPaneIndicator(definition: IndicatorDefinition) {
   }
   // ATR/ADX/RSI style oscillators should live in the dedicated indicator pane
   return PANE_INDICATOR_TYPES.has(definition.type);
+}
+
+function isMarkerOnlyIndicator(definition: IndicatorDefinition) {
+  return definition.type === "trendAlerts";
 }
 
 function toTimestamp(time: Time | undefined) {
@@ -450,6 +460,7 @@ function initIndicatorData() {
 }
 
 function getSeriesForIndicator(indicator: IndicatorDefinition) {
+  if (isMarkerOnlyIndicator(indicator)) return undefined;
   return isPaneIndicator(indicator)
     ? paneIndicatorSeries[indicator.id]
     : overlayIndicatorSeries[indicator.id];
@@ -587,6 +598,7 @@ watch(
         shouldCenterOnTimeframeChange.value = false;
       }
     }
+    updateTrendAlertMarkers();
   },
 );
 
@@ -599,6 +611,7 @@ watch(
     shouldCenterOnTimeframeChange.value = true;
     initChartData();
     initIndicatorData();
+    updateTrendAlertMarkers();
   },
   { flush: "sync" },
 );
@@ -632,6 +645,7 @@ watch(
     }
     updateIndicatorLegendValues();
     updateTradeMarkers();
+    updateTrendAlertMarkers();
   },
 );
 
@@ -647,6 +661,22 @@ watch(
   () => {
     updatePendingOrderLines();
   },
+);
+
+watch(
+  () => ({
+    enabled:
+      store.activeIndicators[INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M] ?? false,
+    color:
+      store.indicatorDefinitions.find(
+        (definition) =>
+          definition.id === INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M,
+      )?.color ?? "",
+  }),
+  () => {
+    updateTrendAlertMarkers();
+  },
+  { deep: false },
 );
 
 watch(mainPaneRatio, () => {
@@ -674,6 +704,7 @@ watch(
         lineWidth: (definition.lineWidth ?? 2) as LineWidth,
       });
     }
+    updateTrendAlertMarkers();
   },
   { deep: true },
 );
@@ -697,6 +728,10 @@ onUnmounted(() => {
   if (tradeMarkersPrimitive) {
     tradeMarkersPrimitive.setMarkers([]);
     tradeMarkersPrimitive = null;
+  }
+  if (trendAlertMarkersPrimitive) {
+    trendAlertMarkersPrimitive.setMarkers([]);
+    trendAlertMarkersPrimitive = null;
   }
   if (mainChart && clickHandler) {
     mainChart.unsubscribeClick(clickHandler);
@@ -744,7 +779,7 @@ function resizeCharts() {
 function updateIndicatorLegendValues(targetTime?: number) {
   const indicatorMap = store.visibleIndicators[props.timeframe] || {};
   const activeIndicators = store.indicatorDefinitions.filter((definition) =>
-    store.isIndicatorActive(definition.id),
+    store.isIndicatorActive(definition.id) && !isMarkerOnlyIndicator(definition),
   );
 
   const overlayValues: Array<{
@@ -791,6 +826,60 @@ function updateTradeMarkers() {
     })),
   ];
   tradeMarkersPrimitive.setMarkers(markers);
+}
+
+function updateTrendAlertMarkers() {
+  if (!trendAlertMarkersPrimitive) return;
+  const enabled =
+    store.activeIndicators[INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M] ?? false;
+  if (!enabled || props.timeframe !== "15m") {
+    trendAlertMarkersPrimitive.setMarkers([]);
+    return;
+  }
+
+  const lowerData = store.visibleDatasets[props.timeframe] || [];
+  if (lowerData.length < 3) {
+    trendAlertMarkersPrimitive.setMarkers([]);
+    return;
+  }
+
+  const htfDataset = getCandlesUpToTime(
+    store.datasets["1h"] || [],
+    lowerData[lowerData.length - 1]?.time ?? store.currentReplayTime,
+  );
+  if (htfDataset.length < 3) {
+    trendAlertMarkersPrimitive.setMarkers([]);
+    return;
+  }
+
+  const definition = store.indicatorDefinitions.find(
+    (indicator) => indicator.id === INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M,
+  );
+
+  const markers = computeTrendFollowingAlertMarkers(lowerData, htfDataset, {
+    longColor: definition?.color ?? "#22c55e",
+  });
+  trendAlertMarkersPrimitive.setMarkers(markers);
+}
+
+function getCandlesUpToTime(dataset: Candle[], timestamp: number) {
+  if (dataset.length === 0) return [];
+  let left = 0;
+  let right = dataset.length - 1;
+  let endIndex = -1;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const candleTime = dataset[mid]?.time ?? 0;
+    if (candleTime <= timestamp) {
+      endIndex = mid;
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+    }
+  }
+
+  return endIndex >= 0 ? dataset.slice(0, endIndex + 1) : [];
 }
 
 function updatePendingOrderLines() {
