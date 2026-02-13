@@ -53,11 +53,19 @@ function setDrawingTool(tool: DrawingTool) {
 }
 
 function undoDrawing() {
-  uiStore.removeLastTrendLine(store.activeSymbol, store.activeTimeframe);
+  if (uiStore.drawingTool === "trendLine") {
+    uiStore.removeLastTrendLine(store.activeSymbol, store.activeTimeframe);
+  } else if (uiStore.drawingTool === "rectangle") {
+    uiStore.removeLastRectangle(store.activeSymbol, store.activeTimeframe);
+  }
 }
 
 function clearDrawings() {
-  uiStore.clearTrendLines(store.activeSymbol, store.activeTimeframe);
+  if (uiStore.drawingTool === "trendLine") {
+    uiStore.clearTrendLines(store.activeSymbol, store.activeTimeframe);
+  } else if (uiStore.drawingTool === "rectangle") {
+    uiStore.clearRectangles(store.activeSymbol, store.activeTimeframe);
+  }
 }
 </script>
 
@@ -136,8 +144,20 @@ function clearDrawings() {
           </button>
           <button
             type="button"
+            class="px-3 py-1 text-xs font-semibold rounded border transition-colors"
+            :class="
+              uiStore.drawingTool === 'rectangle'
+                ? 'border-blue-500 bg-blue-500/20 text-blue-100'
+                : 'border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100'
+            "
+            @click="setDrawingTool('rectangle')"
+          >
+            Rectangle
+          </button>
+          <button
+            type="button"
             class="px-3 py-1 text-xs font-semibold rounded border border-gray-700 text-gray-400 hover:border-blue-500 hover:text-blue-100 transition-colors"
-            title="Remove latest trend line"
+            title="Remove latest drawing for selected draw tool"
             @click="undoDrawing"
           >
             Undo
@@ -145,7 +165,7 @@ function clearDrawings() {
           <button
             type="button"
             class="px-3 py-1 text-xs font-semibold rounded border border-gray-700 text-gray-400 hover:border-red-500 hover:text-red-100 transition-colors"
-            title="Clear all trend lines in current symbol/timeframe"
+            title="Clear all drawings for selected draw tool in current symbol/timeframe"
             @click="clearDrawings"
           >
             Clear
