@@ -157,10 +157,10 @@ const hasPaneIndicators = computed(() =>
   ),
 );
 const currentTrendLines = computed(() =>
-  uiStore.getTrendLines(store.activeSymbol, props.timeframe),
+  uiStore.getTrendLines(store.activeSymbol, props.timeframe, true),
 );
 const currentRectangles = computed(() =>
-  uiStore.getRectangles(store.activeSymbol, props.timeframe),
+  uiStore.getRectangles(store.activeSymbol, props.timeframe, true),
 );
 const projectedTrendLines = computed<ProjectedTrendLine[]>(() => {
   drawingRefreshTick.value;
@@ -594,9 +594,28 @@ function toDrawingPointFromCoordinates(
   return normalizeDrawingPoint(x, y);
 }
 
-function toXCoordinate(point: DrawingPoint): number | null {
+function toXCoordinate(
+  point: DrawingPoint,
+  sourceTimeframe: string,
+): number | null {
   if (!mainChart) return null;
   const timeScale = mainChart.timeScale();
+  const sameTimeframe = sourceTimeframe === props.timeframe;
+
+  if (!sameTimeframe && Number.isFinite(point.time)) {
+    const timeX = timeScale.timeToCoordinate(point.time as Time);
+    if (timeX != null && Number.isFinite(timeX)) {
+      return timeX;
+    }
+    const dataset = store.visibleDatasets[props.timeframe] || [];
+    if (dataset.length > 0) {
+      const nearestIndex = getClosestIndex(dataset, point.time);
+      const nearestX = timeScale.logicalToCoordinate(toLogical(nearestIndex));
+      if (nearestX != null && Number.isFinite(nearestX)) {
+        return nearestX;
+      }
+    }
+  }
 
   if (typeof point.logical === "number" && Number.isFinite(point.logical)) {
     const logicalX = timeScale.logicalToCoordinate(toLogical(point.logical));
@@ -605,9 +624,9 @@ function toXCoordinate(point: DrawingPoint): number | null {
     }
   }
 
-  const timeX = timeScale.timeToCoordinate(point.time as Time);
-  if (timeX != null && Number.isFinite(timeX)) {
-    return timeX;
+  const fallbackTimeX = timeScale.timeToCoordinate(point.time as Time);
+  if (fallbackTimeX != null && Number.isFinite(fallbackTimeX)) {
+    return fallbackTimeX;
   }
   return null;
 }
@@ -852,9 +871,9 @@ function projectTrendLine(
   dashed: boolean,
 ): ProjectedTrendLine | null {
   if (!candleSeries) return null;
-  const x1 = toXCoordinate(line.start);
+  const x1 = toXCoordinate(line.start, line.timeframe);
   const y1 = candleSeries.priceToCoordinate(line.start.price);
-  const x2 = toXCoordinate(line.end);
+  const x2 = toXCoordinate(line.end, line.timeframe);
   const y2 = candleSeries.priceToCoordinate(line.end.price);
   if (
     x1 == null ||
@@ -885,9 +904,9 @@ function projectRectangle(
   dashed: boolean,
 ): ProjectedRectangle | null {
   if (!candleSeries) return null;
-  const x1 = toXCoordinate(rectangle.start);
+  const x1 = toXCoordinate(rectangle.start, rectangle.timeframe);
   const y1 = candleSeries.priceToCoordinate(rectangle.start.price);
-  const x2 = toXCoordinate(rectangle.end);
+  const x2 = toXCoordinate(rectangle.end, rectangle.timeframe);
   const y2 = candleSeries.priceToCoordinate(rectangle.end.price);
   if (
     x1 == null ||

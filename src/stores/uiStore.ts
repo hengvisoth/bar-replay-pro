@@ -68,9 +68,15 @@ export const useUiStore = defineStore("ui", () => {
     ];
   }
 
-  function getTrendLines(symbol: string, timeframe: string) {
+  function getTrendLines(
+    symbol: string,
+    timeframe: string,
+    includeAllTimeframes = false,
+  ) {
     return trendLines.value.filter(
-      (line) => line.symbol === symbol && line.timeframe === timeframe,
+      (line) =>
+        line.symbol === symbol &&
+        (includeAllTimeframes || line.timeframe === timeframe),
     );
   }
 
@@ -119,9 +125,15 @@ export const useUiStore = defineStore("ui", () => {
     return id;
   }
 
-  function getRectangles(symbol: string, timeframe: string) {
+  function getRectangles(
+    symbol: string,
+    timeframe: string,
+    includeAllTimeframes = false,
+  ) {
     return rectangles.value.filter(
-      (rect) => rect.symbol === symbol && rect.timeframe === timeframe,
+      (rect) =>
+        rect.symbol === symbol &&
+        (includeAllTimeframes || rect.timeframe === timeframe),
     );
   }
 
