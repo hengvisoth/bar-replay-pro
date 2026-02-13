@@ -1896,11 +1896,13 @@ async function copySnapshotToClipboard() {
         <div
           v-for="rectangle in projectedRectangles"
           :key="`${rectangle.id}-label`"
-          class="absolute z-20 max-w-[180px] pointer-events-none rounded border border-gray-700 bg-[#050505]/90 px-2 py-1 text-[11px] text-gray-200 truncate"
+          class="absolute z-20 pointer-events-none rounded border border-gray-700 bg-[#050505]/90 px-2 py-1 text-[11px] text-center text-gray-200 truncate"
           :class="rectangle.dashed || !rectangle.label ? 'hidden' : ''"
           :style="{
-            left: `${Math.max(8, rectangle.x + 8)}px`,
-            top: `${Math.max(8, rectangle.y + 8)}px`,
+            left: `${rectangle.x + rectangle.width / 2}px`,
+            top: `${rectangle.y + rectangle.height / 2}px`,
+            transform: 'translate(-50%, -50%)',
+            maxWidth: `${Math.max(56, Math.min(180, rectangle.width - 10))}px`,
           }"
         >
           {{ rectangle.label }}
