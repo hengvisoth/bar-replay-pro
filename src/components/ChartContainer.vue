@@ -28,7 +28,12 @@ import {
 } from "lightweight-charts";
 import { useReplayStore } from "../stores/replayStore";
 import { useTradingStore } from "../stores/tradingStore";
-import { useUiStore, type DrawingPoint, type TrendLineDrawing } from "../stores/uiStore";
+import {
+  useUiStore,
+  type DrawingPoint,
+  type TrendLineDrawing,
+  type RectangleDrawing,
+} from "../stores/uiStore";
 import { INDICATOR_IDS } from "../indicators/indicatorIds";
 import { computeTrendFollowingAlertMarkers } from "../indicators/TrendFollowingAlertsIndicator";
 import ChartLegend from "./ChartLegend.vue";
@@ -56,6 +61,35 @@ type ProjectedTrendLine = {
   lineWidth: number;
   dashed: boolean;
 };
+type ProjectedRectangle = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  lineWidth: number;
+  fill: string;
+  dashed: boolean;
+  label: string;
+};
+type RectangleResizeHandle =
+  | "n"
+  | "s"
+  | "e"
+  | "w"
+  | "ne"
+  | "nw"
+  | "se"
+  | "sw";
+type RectangleInteractionState = {
+  rectangleId: string;
+  mode: "move" | "resize";
+  handle: RectangleResizeHandle | null;
+  origin: ProjectedRectangle;
+  startClientX: number;
+  startClientY: number;
+};
 
 const props = defineProps<{
   timeframe: string;
@@ -66,8 +100,10 @@ const tradingStore = useTradingStore();
 const uiStore = useUiStore();
 
 const paneRoot = ref<HTMLElement | null>(null);
+const mainPaneSurface = ref<HTMLElement | null>(null);
 const mainChartContainer = ref<HTMLElement | null>(null);
 const paneChartContainer = ref<HTMLElement | null>(null);
+const rectangleLabelInput = ref<HTMLInputElement | null>(null);
 const paneReferenceSeries = shallowRef<ISeriesApi<"Line"> | null>(null);
 const mainPaneRatio = ref(0.7);
 const mainPaneHeight = ref(0);
@@ -89,6 +125,9 @@ const snapshotError = ref("");
 const drawingStartPoint = ref<DrawingPoint | null>(null);
 const drawingPreviewPoint = ref<DrawingPoint | null>(null);
 const drawingRefreshTick = ref(0);
+const selectedRectangleId = ref<string | null>(null);
+const editingRectangleId = ref<string | null>(null);
+const rectangleLabelDraft = ref("");
 
 let mainChart: IChartApi | null = null;
 let paneChart: IChartApi | null = null;
@@ -110,6 +149,7 @@ let rangeSyncFrame: number | null = null;
 let pendingRange: LogicalRange | null = null;
 let rangeSyncSource: "main" | "pane" | null = null;
 let snapshotStatusTimeout: number | null = null;
+let rectangleInteractionState: RectangleInteractionState | null = null;
 
 const hasPaneIndicators = computed(() =>
   store.activeIndicatorDefinitions.some(
@@ -118,6 +158,9 @@ const hasPaneIndicators = computed(() =>
 );
 const currentTrendLines = computed(() =>
   uiStore.getTrendLines(store.activeSymbol, props.timeframe),
+);
+const currentRectangles = computed(() =>
+  uiStore.getRectangles(store.activeSymbol, props.timeframe),
 );
 const projectedTrendLines = computed<ProjectedTrendLine[]>(() => {
   drawingRefreshTick.value;
@@ -146,6 +189,58 @@ const projectedTrendLines = computed<ProjectedTrendLine[]>(() => {
     }
   }
   return projected;
+});
+const projectedRectangles = computed<ProjectedRectangle[]>(() => {
+  drawingRefreshTick.value;
+  const projected: ProjectedRectangle[] = [];
+  for (const rect of currentRectangles.value) {
+    const item = projectRectangle(rect, false);
+    if (item) {
+      projected.push(item);
+    }
+  }
+  if (drawingStartPoint.value && drawingPreviewPoint.value) {
+    const preview = projectRectangle(
+      {
+        id: "rectangle-preview",
+        symbol: store.activeSymbol,
+        timeframe: props.timeframe,
+        start: drawingStartPoint.value,
+        end: drawingPreviewPoint.value,
+        color: "#94a3b8",
+        lineWidth: 1,
+        fillOpacity: 0.08,
+        label: "",
+      },
+      true,
+    );
+    if (preview) {
+      projected.push(preview);
+    }
+  }
+  return projected;
+});
+const projectedRectanglesById = computed(() => {
+  const map = new Map<string, ProjectedRectangle>();
+  for (const rectangle of projectedRectangles.value) {
+    map.set(rectangle.id, rectangle);
+  }
+  return map;
+});
+const selectedProjectedRectangle = computed(() => {
+  if (!selectedRectangleId.value) return null;
+  return projectedRectanglesById.value.get(selectedRectangleId.value) ?? null;
+});
+const labelEditorStyle = computed(() => {
+  const rect = selectedProjectedRectangle.value;
+  if (!rect) return null;
+  const top = Math.max(8, rect.y - 40);
+  const maxLeft = Math.max(8, rect.x + rect.width - 176);
+  const left = Math.min(Math.max(8, rect.x), maxLeft);
+  return {
+    left: `${left}px`,
+    top: `${top}px`,
+  };
 });
 onMounted(async () => {
   await nextTick();
@@ -214,8 +309,15 @@ onMounted(async () => {
       }
       return;
     }
-    if (uiStore.drawingTool === "trendLine") {
-      handleTrendLineClick(param);
+    if (uiStore.drawingTool !== "cursor") {
+      handleDrawingClick(param);
+      return;
+    }
+    if (selectedRectangleId.value || editingRectangleId.value) {
+      selectedRectangleId.value = null;
+      editingRectangleId.value = null;
+      rectangleLabelDraft.value = "";
+      refreshDrawingOverlay();
     }
   };
   mainChart.subscribeClick(clickHandler);
@@ -235,8 +337,8 @@ onMounted(async () => {
   };
 
   mainChart.subscribeCrosshairMove((param: MouseEventParams) => {
-    if (uiStore.drawingTool === "trendLine") {
-      updateTrendLinePreview(param);
+    if (uiStore.drawingTool !== "cursor") {
+      updateDrawingPreview(param);
     }
     if (paneChart) {
       syncCrosshairPosition(
@@ -416,7 +518,224 @@ function toDrawingPoint(param: MouseEventParams): DrawingPoint | null {
   return { time: param.time, price };
 }
 
-function handleTrendLineClick(param: MouseEventParams) {
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getMainPaneLimits() {
+  if (!mainPaneSurface.value) return null;
+  return {
+    maxX: Math.max(mainPaneSurface.value.clientWidth - 1, 0),
+    maxY: Math.max(mainPaneSurface.value.clientHeight - 1, 0),
+  };
+}
+
+function toDrawingPointFromCoordinates(
+  x: number,
+  y: number,
+): DrawingPoint | null {
+  if (!mainChart || !candleSeries) return null;
+  const limits = getMainPaneLimits();
+  if (!limits) return null;
+
+  const normalizedX = clamp(x, 0, limits.maxX);
+  const normalizedY = clamp(y, 0, limits.maxY);
+  const time = mainChart.timeScale().coordinateToTime(normalizedX);
+  if (typeof time !== "number") {
+    return null;
+  }
+  const price = candleSeries.coordinateToPrice(normalizedY);
+  if (price == null || !Number.isFinite(price)) {
+    return null;
+  }
+  return { time, price };
+}
+
+function beginRectangleLabelEdit(rectangleId: string) {
+  const rectangle = currentRectangles.value.find((item) => item.id === rectangleId);
+  if (!rectangle) return;
+  selectedRectangleId.value = rectangleId;
+  editingRectangleId.value = rectangleId;
+  rectangleLabelDraft.value = rectangle.label;
+  nextTick(() => {
+    rectangleLabelInput.value?.focus();
+    rectangleLabelInput.value?.select();
+  });
+}
+
+function saveRectangleLabel() {
+  if (!editingRectangleId.value) return;
+  uiStore.updateRectangle(editingRectangleId.value, {
+    label: rectangleLabelDraft.value.trim(),
+  });
+  editingRectangleId.value = null;
+  refreshDrawingOverlay();
+}
+
+function cancelRectangleLabelEdit() {
+  if (!editingRectangleId.value) return;
+  editingRectangleId.value = null;
+  rectangleLabelDraft.value = "";
+}
+
+function handleRectangleLabelKeydown(event: KeyboardEvent) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveRectangleLabel();
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    cancelRectangleLabelEdit();
+  }
+}
+
+function updateRectangleFromProjectedBounds(
+  rectangleId: string,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+) {
+  const start = toDrawingPointFromCoordinates(left, top);
+  const end = toDrawingPointFromCoordinates(right, bottom);
+  if (!start || !end) return;
+  uiStore.updateRectangle(rectangleId, { start, end });
+  refreshDrawingOverlay();
+}
+
+function beginRectangleInteraction(
+  rectangleId: string,
+  mode: "move" | "resize",
+  handle: RectangleResizeHandle | null,
+  event: MouseEvent,
+) {
+  if (uiStore.drawingTool !== "cursor") return;
+  const projected = projectedRectanglesById.value.get(rectangleId);
+  if (!projected || projected.id === "rectangle-preview") return;
+  selectedRectangleId.value = rectangleId;
+  rectangleInteractionState = {
+    rectangleId,
+    mode,
+    handle,
+    origin: { ...projected },
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+  };
+  document.addEventListener("mousemove", handleRectangleInteractionMove);
+  document.addEventListener("mouseup", endRectangleInteraction);
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function beginRectangleMove(rectangleId: string, event: MouseEvent) {
+  beginRectangleInteraction(rectangleId, "move", null, event);
+}
+
+function beginRectangleResize(
+  rectangleId: string,
+  handle: RectangleResizeHandle,
+  event: MouseEvent,
+) {
+  beginRectangleInteraction(rectangleId, "resize", handle, event);
+}
+
+function handleRectangleInteractionMove(event: MouseEvent) {
+  if (!rectangleInteractionState) return;
+  const limits = getMainPaneLimits();
+  if (!limits) return;
+  const state = rectangleInteractionState;
+  const deltaX = event.clientX - state.startClientX;
+  const deltaY = event.clientY - state.startClientY;
+  const minimumSize = 6;
+
+  let left = state.origin.x;
+  let right = state.origin.x + state.origin.width;
+  let top = state.origin.y;
+  let bottom = state.origin.y + state.origin.height;
+
+  if (state.mode === "move") {
+    left += deltaX;
+    right += deltaX;
+    top += deltaY;
+    bottom += deltaY;
+
+    if (left < 0) {
+      right -= left;
+      left = 0;
+    }
+    if (right > limits.maxX) {
+      const overflow = right - limits.maxX;
+      left -= overflow;
+      right = limits.maxX;
+    }
+    if (top < 0) {
+      bottom -= top;
+      top = 0;
+    }
+    if (bottom > limits.maxY) {
+      const overflow = bottom - limits.maxY;
+      top -= overflow;
+      bottom = limits.maxY;
+    }
+  } else if (state.handle) {
+    if (state.handle.includes("w")) {
+      left += deltaX;
+    }
+    if (state.handle.includes("e")) {
+      right += deltaX;
+    }
+    if (state.handle.includes("n")) {
+      top += deltaY;
+    }
+    if (state.handle.includes("s")) {
+      bottom += deltaY;
+    }
+
+    left = clamp(left, 0, limits.maxX);
+    right = clamp(right, 0, limits.maxX);
+    top = clamp(top, 0, limits.maxY);
+    bottom = clamp(bottom, 0, limits.maxY);
+
+    if (right - left < minimumSize) {
+      if (state.handle.includes("w")) {
+        left = right - minimumSize;
+      } else {
+        right = left + minimumSize;
+      }
+    }
+    if (bottom - top < minimumSize) {
+      if (state.handle.includes("n")) {
+        top = bottom - minimumSize;
+      } else {
+        bottom = top + minimumSize;
+      }
+    }
+
+    left = clamp(left, 0, limits.maxX);
+    right = clamp(right, 0, limits.maxX);
+    top = clamp(top, 0, limits.maxY);
+    bottom = clamp(bottom, 0, limits.maxY);
+  }
+
+  updateRectangleFromProjectedBounds(
+    state.rectangleId,
+    Math.min(left, right),
+    Math.min(top, bottom),
+    Math.max(left, right),
+    Math.max(top, bottom),
+  );
+  event.preventDefault();
+}
+
+function endRectangleInteraction() {
+  if (!rectangleInteractionState) return;
+  rectangleInteractionState = null;
+  document.removeEventListener("mousemove", handleRectangleInteractionMove);
+  document.removeEventListener("mouseup", endRectangleInteraction);
+}
+
+function handleDrawingClick(param: MouseEventParams) {
   const point = toDrawingPoint(param);
   if (!point) return;
 
@@ -427,25 +746,36 @@ function handleTrendLineClick(param: MouseEventParams) {
     return;
   }
 
-  uiStore.addTrendLine({
-    symbol: store.activeSymbol,
-    timeframe: props.timeframe,
-    start: drawingStartPoint.value,
-    end: point,
-  });
+  if (uiStore.drawingTool === "trendLine") {
+    uiStore.addTrendLine({
+      symbol: store.activeSymbol,
+      timeframe: props.timeframe,
+      start: drawingStartPoint.value,
+      end: point,
+    });
+  } else if (uiStore.drawingTool === "rectangle") {
+    const rectangleId = uiStore.addRectangle({
+      symbol: store.activeSymbol,
+      timeframe: props.timeframe,
+      start: drawingStartPoint.value,
+      end: point,
+    });
+    uiStore.setDrawingTool("cursor");
+    beginRectangleLabelEdit(rectangleId);
+  }
   drawingStartPoint.value = null;
   drawingPreviewPoint.value = null;
   refreshDrawingOverlay();
 }
 
-function updateTrendLinePreview(param: MouseEventParams) {
+function updateDrawingPreview(param: MouseEventParams) {
   if (!drawingStartPoint.value) return;
   const point = toDrawingPoint(param);
   drawingPreviewPoint.value = point;
   refreshDrawingOverlay();
 }
 
-function cancelTrendLineDraft() {
+function cancelDrawingDraft() {
   if (!drawingStartPoint.value && !drawingPreviewPoint.value) return;
   drawingStartPoint.value = null;
   drawingPreviewPoint.value = null;
@@ -488,6 +818,61 @@ function projectTrendLine(
     lineWidth: line.lineWidth,
     dashed,
   };
+}
+
+function projectRectangle(
+  rectangle: RectangleDrawing,
+  dashed: boolean,
+): ProjectedRectangle | null {
+  if (!mainChart || !candleSeries) return null;
+  const timeScale = mainChart.timeScale();
+  const x1 = timeScale.timeToCoordinate(rectangle.start.time as Time);
+  const y1 = candleSeries.priceToCoordinate(rectangle.start.price);
+  const x2 = timeScale.timeToCoordinate(rectangle.end.time as Time);
+  const y2 = candleSeries.priceToCoordinate(rectangle.end.price);
+  if (
+    x1 == null ||
+    y1 == null ||
+    x2 == null ||
+    y2 == null ||
+    !Number.isFinite(x1) ||
+    !Number.isFinite(y1) ||
+    !Number.isFinite(x2) ||
+    !Number.isFinite(y2)
+  ) {
+    return null;
+  }
+  const x = Math.min(x1, x2);
+  const y = Math.min(y1, y2);
+  const width = Math.max(Math.abs(x2 - x1), 1);
+  const height = Math.max(Math.abs(y2 - y1), 1);
+  const opacity = Math.max(0, Math.min(1, rectangle.fillOpacity));
+
+  return {
+    id: rectangle.id,
+    x,
+    y,
+    width,
+    height,
+    color: rectangle.color,
+    lineWidth: rectangle.lineWidth,
+    fill: hexToRgba(rectangle.color, opacity),
+    dashed,
+    label: rectangle.label,
+  };
+}
+
+function hexToRgba(color: string, alpha: number) {
+  const sanitized = color.trim();
+  const full = /^#[0-9a-fA-F]{6}$/.test(sanitized)
+    ? sanitized
+    : /^#[0-9a-fA-F]{3}$/.test(sanitized)
+      ? `#${sanitized[1]}${sanitized[1]}${sanitized[2]}${sanitized[2]}${sanitized[3]}${sanitized[3]}`
+      : "#38bdf8";
+  const r = Number.parseInt(full.slice(1, 3), 16);
+  const g = Number.parseInt(full.slice(3, 5), 16);
+  const b = Number.parseInt(full.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function setMainRange(range: LogicalRange) {
@@ -824,9 +1209,18 @@ watch(
 );
 
 watch(
-  () => [uiStore.drawingTool, props.timeframe, store.activeSymbol],
-  () => {
-    cancelTrendLineDraft();
+  () => [uiStore.drawingTool, props.timeframe, store.activeSymbol] as const,
+  ([nextTool, nextTimeframe, nextSymbol], [, prevTimeframe, prevSymbol]) => {
+    cancelDrawingDraft();
+    endRectangleInteraction();
+    if (nextTimeframe !== prevTimeframe || nextSymbol !== prevSymbol) {
+      selectedRectangleId.value = null;
+      editingRectangleId.value = null;
+      rectangleLabelDraft.value = "";
+    } else if (nextTool !== "cursor" && editingRectangleId.value) {
+      editingRectangleId.value = null;
+      rectangleLabelDraft.value = "";
+    }
     refreshDrawingOverlay();
   },
 );
@@ -834,6 +1228,24 @@ watch(
 watch(
   () => uiStore.trendLines,
   () => {
+    refreshDrawingOverlay();
+  },
+  { deep: true },
+);
+
+watch(
+  () => uiStore.rectangles,
+  () => {
+    if (
+      selectedRectangleId.value &&
+      !currentRectangles.value.some(
+        (rectangle) => rectangle.id === selectedRectangleId.value,
+      )
+    ) {
+      selectedRectangleId.value = null;
+      editingRectangleId.value = null;
+      rectangleLabelDraft.value = "";
+    }
     refreshDrawingOverlay();
   },
   { deep: true },
@@ -874,6 +1286,7 @@ watch(
 onUnmounted(() => {
   window.removeEventListener("resize", handleResize);
   endPaneResize();
+  endRectangleInteraction();
   if (paneResizeObserver && paneRoot.value) {
     paneResizeObserver.unobserve(paneRoot.value);
     paneResizeObserver.disconnect();
@@ -1139,20 +1552,38 @@ function getDefaultCandleCount(timeframe: string, datasetLength: number) {
 }
 
 function handleHotkeys(event: KeyboardEvent) {
+  const target = event.target as HTMLElement | null;
+  if (
+    target &&
+    (target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.isContentEditable)
+  ) {
+    return;
+  }
   if (event.key === "Escape") {
+    if (editingRectangleId.value) {
+      event.preventDefault();
+      cancelRectangleLabelEdit();
+      return;
+    }
     if (drawingStartPoint.value) {
       event.preventDefault();
-      cancelTrendLineDraft();
+      cancelDrawingDraft();
     }
     return;
   }
   if (
     (event.key === "Backspace" || event.key === "Delete") &&
-    uiStore.drawingTool === "trendLine"
+    uiStore.drawingTool !== "cursor"
   ) {
     event.preventDefault();
-    cancelTrendLineDraft();
-    uiStore.removeLastTrendLine(store.activeSymbol, props.timeframe);
+    cancelDrawingDraft();
+    if (uiStore.drawingTool === "trendLine") {
+      uiStore.removeLastTrendLine(store.activeSymbol, props.timeframe);
+    } else if (uiStore.drawingTool === "rectangle") {
+      uiStore.removeLastRectangle(store.activeSymbol, props.timeframe);
+    }
     refreshDrawingOverlay();
     return;
   }
@@ -1252,7 +1683,7 @@ async function copySnapshotToClipboard() {
     class="relative w-full h-full bg-[#050505] overflow-hidden border-r border-gray-800"
     :class="[
       store.isSelectingReplay ? 'cursor-crosshair ring-1 ring-blue-500/50' : '',
-      uiStore.drawingTool === 'trendLine' && !store.isSelectingReplay
+      uiStore.drawingTool !== 'cursor' && !store.isSelectingReplay
         ? 'cursor-crosshair'
         : '',
     ]"
@@ -1268,14 +1699,16 @@ async function copySnapshotToClipboard() {
       </div>
     </div>
     <div
-      v-else-if="uiStore.drawingTool === 'trendLine'"
+      v-else-if="uiStore.drawingTool !== 'cursor'"
       class="absolute left-3 top-16 z-20 pointer-events-none"
     >
       <div class="px-2 py-1 bg-[#050505]/90 border border-blue-500/50 text-[11px] text-blue-100 rounded">
         {{
           drawingStartPoint
-            ? "Click second point to finish line"
-            : "Trend Line: click first point"
+            ? "Click second point to finish drawing"
+            : uiStore.drawingTool === "trendLine"
+              ? "Trend Line: click first point"
+              : "Rectangle: click first corner"
         }}
       </div>
     </div>
@@ -1328,11 +1761,125 @@ async function copySnapshotToClipboard() {
       </div>
 
       <div
+        ref="mainPaneSurface"
         class="relative w-full"
         :style="{ height: `${mainPaneHeight}px`, minHeight: '160px' }"
       >
         <div ref="mainChartContainer" class="w-full h-full"></div>
         <svg class="absolute inset-0 z-10 w-full h-full pointer-events-none">
+          <rect
+            v-for="rectangle in projectedRectangles"
+            :key="rectangle.id"
+            :x="rectangle.x"
+            :y="rectangle.y"
+            :width="rectangle.width"
+            :height="rectangle.height"
+            :fill="rectangle.fill"
+            :stroke="rectangle.color"
+            :stroke-width="
+              selectedRectangleId === rectangle.id
+                ? rectangle.lineWidth + 1
+                : rectangle.lineWidth
+            "
+            :stroke-dasharray="rectangle.dashed ? '6 4' : undefined"
+            :class="
+              uiStore.drawingTool === 'cursor' && !rectangle.dashed
+                ? 'pointer-events-auto cursor-move'
+                : ''
+            "
+            @mousedown="
+              (event) =>
+                !rectangle.dashed && beginRectangleMove(rectangle.id, event)
+            "
+            @dblclick="
+              !rectangle.dashed && beginRectangleLabelEdit(rectangle.id)
+            "
+          />
+          <template
+            v-for="rectangle in projectedRectangles"
+            :key="`${rectangle.id}-handles`"
+          >
+            <g
+              v-if="
+                uiStore.drawingTool === 'cursor' &&
+                selectedRectangleId === rectangle.id &&
+                !rectangle.dashed
+              "
+            >
+              <circle
+                :cx="rectangle.x"
+                :cy="rectangle.y"
+                r="4"
+                class="pointer-events-auto cursor-nwse-resize fill-blue-500"
+                @mousedown="
+                  (event) => beginRectangleResize(rectangle.id, 'nw', event)
+                "
+              />
+              <circle
+                :cx="rectangle.x + rectangle.width"
+                :cy="rectangle.y"
+                r="4"
+                class="pointer-events-auto cursor-nesw-resize fill-blue-500"
+                @mousedown="
+                  (event) => beginRectangleResize(rectangle.id, 'ne', event)
+                "
+              />
+              <circle
+                :cx="rectangle.x"
+                :cy="rectangle.y + rectangle.height"
+                r="4"
+                class="pointer-events-auto cursor-nesw-resize fill-blue-500"
+                @mousedown="
+                  (event) => beginRectangleResize(rectangle.id, 'sw', event)
+                "
+              />
+              <circle
+                :cx="rectangle.x + rectangle.width"
+                :cy="rectangle.y + rectangle.height"
+                r="4"
+                class="pointer-events-auto cursor-nwse-resize fill-blue-500"
+                @mousedown="
+                  (event) => beginRectangleResize(rectangle.id, 'se', event)
+                "
+              />
+              <circle
+                :cx="rectangle.x + rectangle.width / 2"
+                :cy="rectangle.y"
+                r="3.5"
+                class="pointer-events-auto cursor-ns-resize fill-blue-400"
+                @mousedown="
+                  (event) => beginRectangleResize(rectangle.id, 'n', event)
+                "
+              />
+              <circle
+                :cx="rectangle.x + rectangle.width / 2"
+                :cy="rectangle.y + rectangle.height"
+                r="3.5"
+                class="pointer-events-auto cursor-ns-resize fill-blue-400"
+                @mousedown="
+                  (event) => beginRectangleResize(rectangle.id, 's', event)
+                "
+              />
+              <circle
+                :cx="rectangle.x"
+                :cy="rectangle.y + rectangle.height / 2"
+                r="3.5"
+                class="pointer-events-auto cursor-ew-resize fill-blue-400"
+                @mousedown="
+                  (event) => beginRectangleResize(rectangle.id, 'w', event)
+                "
+              />
+              <circle
+                :cx="rectangle.x + rectangle.width"
+                :cy="rectangle.y + rectangle.height / 2"
+                r="3.5"
+                class="pointer-events-auto cursor-ew-resize fill-blue-400"
+                @mousedown="
+                  (event) => beginRectangleResize(rectangle.id, 'e', event)
+                "
+              />
+            </g>
+          </template>
           <line
             v-for="line in projectedTrendLines"
             :key="line.id"
@@ -1346,6 +1893,68 @@ async function copySnapshotToClipboard() {
             stroke-linecap="round"
           />
         </svg>
+        <div
+          v-for="rectangle in projectedRectangles"
+          :key="`${rectangle.id}-label`"
+          class="absolute z-20 max-w-[180px] pointer-events-none rounded border border-gray-700 bg-[#050505]/90 px-2 py-1 text-[11px] text-gray-200 truncate"
+          :class="rectangle.dashed || !rectangle.label ? 'hidden' : ''"
+          :style="{
+            left: `${Math.max(8, rectangle.x + 8)}px`,
+            top: `${Math.max(8, rectangle.y + 8)}px`,
+          }"
+        >
+          {{ rectangle.label }}
+        </div>
+        <div
+          v-if="
+            selectedProjectedRectangle &&
+            uiStore.drawingTool === 'cursor' &&
+            labelEditorStyle
+          "
+          class="absolute z-30 pointer-events-auto rounded border border-blue-500/60 bg-[#050505]/95 px-2 py-2 shadow-lg"
+          :style="labelEditorStyle"
+          @mousedown.stop
+        >
+          <template v-if="editingRectangleId === selectedProjectedRectangle.id">
+            <input
+              ref="rectangleLabelInput"
+              v-model="rectangleLabelDraft"
+              type="text"
+              maxlength="50"
+              class="w-40 rounded border border-gray-700 bg-[#111111] px-2 py-1 text-xs text-gray-100 focus:border-blue-500 focus:outline-none"
+              placeholder="Rectangle label"
+              @keydown="handleRectangleLabelKeydown"
+            />
+            <div class="mt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                class="px-2 py-1 text-[11px] font-semibold rounded border border-gray-700 text-gray-200 hover:border-blue-500 hover:text-blue-100 transition"
+                @click="cancelRectangleLabelEdit"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="px-2 py-1 text-[11px] font-semibold rounded border border-blue-500 text-blue-100 hover:bg-blue-500/20 transition"
+                @click="saveRectangleLabel"
+              >
+                Save
+              </button>
+            </div>
+          </template>
+          <button
+            v-else
+            type="button"
+            class="px-2 py-1 text-[11px] font-semibold rounded border border-gray-700 text-gray-200 hover:border-blue-500 hover:text-blue-100 transition"
+            @click="beginRectangleLabelEdit(selectedProjectedRectangle.id)"
+          >
+            {{
+              selectedProjectedRectangle.label
+                ? "Edit Label"
+                : "Add Label"
+            }}
+          </button>
+        </div>
       </div>
 
       <template v-if="hasPaneIndicators">
