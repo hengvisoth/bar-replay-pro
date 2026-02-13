@@ -81,11 +81,11 @@ export const INDICATOR_DEFINITIONS: IndicatorDefinition[] = [
     lineWidth: 2,
     overlay: false,
   },
-  {
-    id: INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M,
-    label: "15m Trend Alerts",
-    type: "trendAlerts",
-    color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M],
-    overlay: true,
-  },
+  // {
+  //   id: INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M,
+  //   label: "15m Trend Alerts",
+  //   type: "trendAlerts",
+  //   color: INDICATOR_DEFAULT_COLORS[INDICATOR_IDS.TREND_FOLLOWING_ALERTS_15M],
+  //   overlay: true,
+  // },
 ];

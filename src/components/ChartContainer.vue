@@ -507,15 +507,72 @@ function syncCrosshairPosition(
   targetChart.setCrosshairPosition(target.price, param.time, target.series);
 }
 
-function toDrawingPoint(param: MouseEventParams): DrawingPoint | null {
-  if (!candleSeries || !param.point || typeof param.time !== "number") {
-    return null;
-  }
-  const price = candleSeries.coordinateToPrice(param.point.y);
+function getTimeFromLogical(logical: number): number | null {
+  const dataset = store.visibleDatasets[props.timeframe] || [];
+  if (dataset.length === 0) return null;
+  const index = Math.round(logical);
+  const clamped = clamp(index, 0, dataset.length - 1);
+  return dataset[clamped]?.time ?? null;
+}
+
+function normalizeDrawingPoint(
+  x: number,
+  y: number,
+  timeHint?: number,
+  logicalHint?: number,
+): DrawingPoint | null {
+  if (!mainChart || !candleSeries) return null;
+  const limits = getMainPaneLimits();
+  if (!limits) return null;
+
+  const normalizedX = clamp(x, 0, limits.maxX);
+  const normalizedY = clamp(y, 0, limits.maxY);
+  const price = candleSeries.coordinateToPrice(normalizedY);
   if (price == null || !Number.isFinite(price)) {
     return null;
   }
-  return { time: param.time, price };
+
+  const timeScale = mainChart.timeScale();
+  const logical =
+    typeof logicalHint === "number" && Number.isFinite(logicalHint)
+      ? logicalHint
+      : timeScale.coordinateToLogical(normalizedX);
+  const safeLogical =
+    typeof logical === "number" && Number.isFinite(logical)
+      ? Number(logical)
+      : undefined;
+
+  const timeCandidate =
+    typeof timeHint === "number" && Number.isFinite(timeHint)
+      ? timeHint
+      : timeScale.coordinateToTime(normalizedX);
+  const resolvedTime =
+    typeof timeCandidate === "number" && Number.isFinite(timeCandidate)
+      ? timeCandidate
+      : safeLogical == null
+        ? null
+        : getTimeFromLogical(safeLogical);
+  if (resolvedTime == null) {
+    return null;
+  }
+
+  return {
+    time: resolvedTime,
+    price,
+    logical: safeLogical,
+  };
+}
+
+function toDrawingPoint(param: MouseEventParams): DrawingPoint | null {
+  if (!param.point) {
+    return null;
+  }
+  return normalizeDrawingPoint(
+    param.point.x,
+    param.point.y,
+    typeof param.time === "number" ? param.time : undefined,
+    typeof param.logical === "number" ? param.logical : undefined,
+  );
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -534,21 +591,25 @@ function toDrawingPointFromCoordinates(
   x: number,
   y: number,
 ): DrawingPoint | null {
-  if (!mainChart || !candleSeries) return null;
-  const limits = getMainPaneLimits();
-  if (!limits) return null;
+  return normalizeDrawingPoint(x, y);
+}
 
-  const normalizedX = clamp(x, 0, limits.maxX);
-  const normalizedY = clamp(y, 0, limits.maxY);
-  const time = mainChart.timeScale().coordinateToTime(normalizedX);
-  if (typeof time !== "number") {
-    return null;
+function toXCoordinate(point: DrawingPoint): number | null {
+  if (!mainChart) return null;
+  const timeScale = mainChart.timeScale();
+
+  if (typeof point.logical === "number" && Number.isFinite(point.logical)) {
+    const logicalX = timeScale.logicalToCoordinate(toLogical(point.logical));
+    if (logicalX != null && Number.isFinite(logicalX)) {
+      return logicalX;
+    }
   }
-  const price = candleSeries.coordinateToPrice(normalizedY);
-  if (price == null || !Number.isFinite(price)) {
-    return null;
+
+  const timeX = timeScale.timeToCoordinate(point.time as Time);
+  if (timeX != null && Number.isFinite(timeX)) {
+    return timeX;
   }
-  return { time, price };
+  return null;
 }
 
 function beginRectangleLabelEdit(rectangleId: string) {
@@ -790,11 +851,10 @@ function projectTrendLine(
   line: TrendLineDrawing,
   dashed: boolean,
 ): ProjectedTrendLine | null {
-  if (!mainChart || !candleSeries) return null;
-  const timeScale = mainChart.timeScale();
-  const x1 = timeScale.timeToCoordinate(line.start.time as Time);
+  if (!candleSeries) return null;
+  const x1 = toXCoordinate(line.start);
   const y1 = candleSeries.priceToCoordinate(line.start.price);
-  const x2 = timeScale.timeToCoordinate(line.end.time as Time);
+  const x2 = toXCoordinate(line.end);
   const y2 = candleSeries.priceToCoordinate(line.end.price);
   if (
     x1 == null ||
@@ -824,11 +884,10 @@ function projectRectangle(
   rectangle: RectangleDrawing,
   dashed: boolean,
 ): ProjectedRectangle | null {
-  if (!mainChart || !candleSeries) return null;
-  const timeScale = mainChart.timeScale();
-  const x1 = timeScale.timeToCoordinate(rectangle.start.time as Time);
+  if (!candleSeries) return null;
+  const x1 = toXCoordinate(rectangle.start);
   const y1 = candleSeries.priceToCoordinate(rectangle.start.price);
-  const x2 = timeScale.timeToCoordinate(rectangle.end.time as Time);
+  const x2 = toXCoordinate(rectangle.end);
   const y2 = candleSeries.priceToCoordinate(rectangle.end.price);
   if (
     x1 == null ||

@@ -6,6 +6,7 @@ export type DrawingTool = "cursor" | "trendLine" | "rectangle";
 export interface DrawingPoint {
   time: number;
   price: number;
+  logical?: number;
 }
 
 export interface TrendLineDrawing {
