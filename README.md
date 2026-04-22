@@ -18,3 +18,4 @@ node ./generate-manifest.js
 ```
 
 ..
+upup
